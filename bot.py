@@ -1938,11 +1938,11 @@ def main():
                     print(f"📊 Trade closed: {result.get('reason', 'unknown')} | P&L: ${result.get('pnl', 0):+.2f}")
 
             # ═══ LOSS-STREAK CIRCUIT BREAKER ═══
-            if consecutive_losses >= MAX_CONSEC_LOSSES and time.time() < paused_until:
-                mins = int((paused_until - time.time()) / 60)
-                print(f"⏸️ Paused after {consecutive_losses} losses. {mins} min left.")
-                time.sleep(60)  # Check every minute while paused
-                continue
+            # if consecutive_losses >= MAX_CONSEC_LOSSES and time.time() < paused_until:
+            #     mins = int((paused_until - time.time()) / 60)
+            #     print(f"⏸️ Paused after {consecutive_losses} losses. {mins} min left.")
+            #     time.sleep(60)  # Check every minute while paused
+            #     continue
 
             # ═══ DAILY LOSS LIMIT ═══
             if daily_pnl <= -(CAPITAL * DAILY_LOSS_LIMIT_PCT):
