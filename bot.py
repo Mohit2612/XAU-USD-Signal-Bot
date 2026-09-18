@@ -6,7 +6,7 @@ import math
 from datetime import datetime, date, timedelta
 from collections import deque
 import pytz
-
+import xml.etree.ElementTree as ET
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  🥇 XAU/USD ULTIMATE SIGNAL BOT — 2026 INSTITUTIONAL GRADE ║
 # ║                                                              ║
@@ -1460,6 +1460,74 @@ def generate_scalp_signal(candles_1m):
 # ============================================
 # MAIN SIGNAL ENGINE — 2026 ULTIMATE STRATEGY
 # ============================================
+# ============================================
+# NEWS CHECKING LOGIC
+# ============================================
+NEWS_CACHE = {"data": [], "last_fetched": 0}
+
+def fetch_high_impact_usd_news():
+    global NEWS_CACHE
+    current_time = time.time()
+    # Cache for 4 hours (14400 seconds)
+    if current_time - NEWS_CACHE["last_fetched"] < 14400 and NEWS_CACHE["data"]:
+        return NEWS_CACHE["data"]
+        
+    try:
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            return NEWS_CACHE["data"]
+            
+        root = ET.fromstring(response.content)
+        news_list = []
+        
+        # FF XML usually uses Eastern Time (ET) for the time field
+        eastern = pytz.timezone('US/Eastern')
+        
+        for event in root.findall('event'):
+            country = event.find('country').text if event.find('country') is not None else ""
+            impact = event.find('impact').text if event.find('impact') is not None else ""
+            title = event.find('title').text if event.find('title') is not None else ""
+            date_str = event.find('date').text if event.find('date') is not None else ""
+            time_str = event.find('time').text if event.find('time') is not None else ""
+            
+            if country == "USD" and impact == "High" and time_str and date_str:
+                if time_str.lower() == "all day" or time_str.lower() == "tentative":
+                    continue
+                try:
+                    dt_str = f"{date_str} {time_str}"
+                    dt_obj = datetime.strptime(dt_str, "%m-%d-%Y %I:%M%p")
+                    dt_aware = eastern.localize(dt_obj)
+                    news_list.append({
+                        "title": title,
+                        "time": dt_aware
+                    })
+                except Exception:
+                    pass
+                    
+        NEWS_CACHE["data"] = news_list
+        NEWS_CACHE["last_fetched"] = current_time
+        return news_list
+    except Exception as e:
+        print(f"News fetch error: {e}")
+        return NEWS_CACHE["data"]
+
+def check_news_block():
+    news_list = fetch_high_impact_usd_news()
+    if not news_list:
+        return False, ""
+        
+    now = datetime.now(pytz.utc)
+    for news in news_list:
+        news_time_utc = news["time"].astimezone(pytz.utc)
+        time_diff = (news_time_utc - now).total_seconds() / 60.0
+        
+        # Block 30 mins before and 30 mins after high impact news
+        if -30 <= time_diff <= 30:
+            return True, news["title"]
+            
+    return False, ""
+
 def generate_signal(candles_5m, candles_15m, candles_1h):
     if not candles_5m or not candles_15m or not candles_1h:
         return None
@@ -1475,6 +1543,13 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
 
     print(f"\n🎯 Active: {kill_zone['label']}")
 
+    # ═══════════════════════════════════════
+    # GATE 1.5: NEWS CHECK
+    # ═══════════════════════════════════════
+    is_blocked, news_title = check_news_block()
+    if is_blocked:
+        print(f"🚫 Trade blocked due to high-impact USD news: {news_title}")
+        return None
     # ═══════════════════════════════════════
     # GATE 2: 1H MACRO TREND
     # ═══════════════════════════════════════
