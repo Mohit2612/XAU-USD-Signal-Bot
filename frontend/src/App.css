@@ -1,0 +1,242 @@
+:root {
+  --bg-dark: #0f1115;
+  --bg-card: rgba(26, 29, 36, 0.7);
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
+  --accent: #3b82f6;
+  --success: #10b981;
+  --danger: #ef4444;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+.dashboard-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(135deg, #fff, #9ca3af);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.status-badge {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.card {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.stat-card h3 {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem 0;
+  font-weight: 500;
+}
+
+.stat-card p {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.profit { color: var(--success); }
+.loss { color: var(--danger); }
+
+.section {
+  margin-bottom: 1.5rem;
+}
+
+.section h2 {
+  font-size: 1.125rem;
+  margin: 0 0 1rem 0;
+  font-weight: 600;
+}
+
+.active-trade-box {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.trade-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.direction {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+.direction.long { color: var(--success); }
+.direction.short { color: var(--danger); }
+
+.confidence {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.trade-details {
+  display: flex;
+  justify-content: space-between;
+}
+
+.trade-details div {
+  display: flex;
+  flex-direction: column;
+}
+
+.trade-details span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2rem 0;
+  color: var(--text-muted);
+}
+
+.trades-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trade-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  align-items: center;
+}
+
+.trade-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.trade-main .long { color: var(--success); font-weight: bold; font-size: 0.875rem; }
+.trade-main .short { color: var(--danger); font-weight: bold; font-size: 0.875rem; }
+
+.price {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.trade-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.trade-result .reason {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background-color: var(--bg-dark);
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--accent);
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.radar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  margin: 1rem auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.radar::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(45deg, rgba(59, 130, 246, 0.5) 0%, transparent 100%);
+  transform-origin: 0 0;
+  animation: radar 2s linear infinite;
+}
+
+@keyframes radar {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

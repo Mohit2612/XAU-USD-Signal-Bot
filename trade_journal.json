@@ -1,0 +1,34 @@
+[
+  {
+    "date": "2026-09-18",
+    "time": "18 Sep 2026 01:37 IST",
+    "signal": "LONG",
+    "entry": 4348.77168,
+    "exit": 4343.53477,
+    "sl": 4343.8416799999995,
+    "tp": 4361.10168,
+    "lots": 0.01,
+    "pnl": -5.24,
+    "reason": "SL_HIT",
+    "confidence": 56,
+    "duration": "6m 23s",
+    "sl_moved_be": false,
+    "sl_moved_lock": false
+  },
+  {
+    "date": "2026-09-18",
+    "time": "18 Sep 2026 02:59 IST",
+    "signal": "SHORT",
+    "entry": 4341.24397,
+    "exit": 4341.30563,
+    "sl": 4341.54697,
+    "tp": 4340.789470000001,
+    "lots": 0.17,
+    "pnl": -1.05,
+    "reason": "SL_HIT",
+    "confidence": 88,
+    "duration": "5m 9s",
+    "sl_moved_be": true,
+    "sl_moved_lock": false
+  }
+]
