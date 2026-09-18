@@ -1943,24 +1943,23 @@ def main():
             #     print(f"⏸️ Paused after {consecutive_losses} losses. {mins} min left.")
             #     time.sleep(60)  # Check every minute while paused
             #     continue
-
             # ═══ DAILY LOSS LIMIT ═══
-            if daily_pnl <= -(CAPITAL * DAILY_LOSS_LIMIT_PCT):
-                print(f"🛑 Daily loss limit hit (${daily_pnl:.2f}). Sleeping 1hr...")
-                time.sleep(3600)
-                continue
+            # if daily_pnl <= -(CAPITAL * DAILY_LOSS_LIMIT_PCT):
+            #     print(f"🛑 Daily loss limit hit (${daily_pnl:.2f}). Sleeping 1hr...")
+            #     time.sleep(3600)
+            #     continue
 
             # ═══ WIN RATE AUTO-PAUSE ═══
-            rolling = get_rolling_stats()
-            if rolling and rolling["total"] >= 10 and rolling["win_rate"] < 50:
-                print(f"⚠️ Win rate critically low ({rolling['win_rate']}%). Auto-pause 2hrs.")
-                send_telegram(
-                    f"⚠️ <b>AUTO-PAUSE: Win rate critical</b>\n"
-                    f"Win Rate: {rolling['win_rate']}% (last {rolling['total']} trades)\n"
-                    f"Bot paused for 2 hours for safety."
-                )
-                time.sleep(7200)
-                continue
+            # rolling = get_rolling_stats()
+            # if rolling and rolling["total"] >= 10 and rolling["win_rate"] < 50:
+            #     print(f"⚠️ Win rate critically low ({rolling['win_rate']}%). Auto-pause 2hrs.")
+            #     send_telegram(
+            #         f"⚠️ <b>AUTO-PAUSE: Win rate critical</b>\n"
+            #         f"Win Rate: {rolling['win_rate']}% (last {rolling['total']} trades)\n"
+            #         f"Bot paused for 2 hours for safety."
+            #     )
+            #     time.sleep(7200)
+            #     continue
 
             session = get_session_label()
             print(f"\n[{now.strftime('%H:%M')}] {session} | "
@@ -1968,10 +1967,10 @@ def main():
                   f"Daily P&L: ${daily_pnl:+.2f}")
 
             # ═══ DAILY LIMIT ═══
-            if trades_today >= MAX_TRADES_PER_DAY:
-                print("Daily limit reached. Sleeping 30min...")
-                time.sleep(1800)
-                continue
+            # if trades_today >= MAX_TRADES_PER_DAY:
+            #     print("Daily limit reached. Sleeping 30min...")
+            #     time.sleep(1800)
+            #     continue
 
             # ═══ WEEKEND ═══
             # if now.weekday() >= 5:
