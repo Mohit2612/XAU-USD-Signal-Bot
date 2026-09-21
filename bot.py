@@ -100,7 +100,7 @@ ASSETS = {
         "min_ote_move": 0.0025,
         "vwap_threshold": 0.0006,
         "wick_min": 0.0006,
-        "enabled": True,
+        "enabled": False,
     },
     "USD/JPY": {
         "type": "forex",
@@ -119,7 +119,7 @@ ASSETS = {
         "min_ote_move": 0.20,
         "vwap_threshold": 0.05,
         "wick_min": 0.05,
-        "enabled": True,
+        "enabled": False,
     },
     "AUD/USD": {
         "type": "forex",
@@ -138,7 +138,7 @@ ASSETS = {
         "min_ote_move": 0.0018,
         "vwap_threshold": 0.0004,
         "wick_min": 0.0004,
-        "enabled": True,
+        "enabled": False,
     },
     "USD/CAD": {
         "type": "forex",
@@ -156,7 +156,7 @@ ASSETS = {
         "min_ote_move": 0.0018,
         "vwap_threshold": 0.0004,
         "wick_min": 0.0004,
-        "enabled": True,
+        "enabled": False,
     },
     "BTC/USD": {
         "type": "crypto",
@@ -175,7 +175,7 @@ ASSETS = {
         "min_ote_move": 200.0,
         "vwap_threshold": 50.0,
         "wick_min": 50.0,
-        "enabled": True,
+        "enabled": False,
     },
     "ETH/USD": {
         "type": "crypto",
@@ -193,7 +193,7 @@ ASSETS = {
         "min_ote_move": 10.0,
         "vwap_threshold": 3.0,
         "wick_min": 3.0,
-        "enabled": True,
+        "enabled": False,
     },
 }
 
