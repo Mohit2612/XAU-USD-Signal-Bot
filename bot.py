@@ -39,7 +39,7 @@ import macro_analyzer
 # ============================================
 TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "8831251788:AAEIMLBzD0LwdGC4vqyO7Z2SH5cUWcUTg6Y")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "953284393")
-TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "7299d19a5fa645a4ba5ac931ddf875a7")
+TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "ddbd5f923b014d5a8d2514e7196f1f22")
 
 # ============================================
 # MULTI-ASSET CONFIGURATION REGISTRY
