@@ -1340,6 +1340,7 @@ def monitor_single_trade(symbol):
     elapsed = time.time() - trade["entry_time"]
 
     # Calculate current P&L
+    pip_value = ASSETS.get(symbol, {}).get("pip_value", 1.0)
     contract_size = ASSETS.get(symbol, {}).get("contract_size", 100)
     if signal == "LONG":
         current_pnl = (current_price - entry) * trade["lots"] * contract_size

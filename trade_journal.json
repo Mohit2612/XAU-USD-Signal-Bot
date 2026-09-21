@@ -188,5 +188,23 @@
     "duration": "1m 46s",
     "sl_moved_be": false,
     "sl_moved_lock": false
+  },
+  {
+    "date": "2026-09-22",
+    "time": "22 Sep 2026 00:52 IST",
+    "symbol": "BTC/USD",
+    "asset_label": "Bitcoin \u20bf",
+    "signal": "LONG",
+    "entry": 85956.64,
+    "exit": 86337.81,
+    "sl": 85775.27,
+    "tp": 86319.39,
+    "lots": 0.03,
+    "pnl": 11.44,
+    "reason": "TP_HIT",
+    "confidence": 74,
+    "duration": "40m 54s",
+    "sl_moved_be": false,
+    "sl_moved_lock": false
   }
 ]
