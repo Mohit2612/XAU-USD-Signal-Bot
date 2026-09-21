@@ -278,5 +278,41 @@
     "duration": "1m 34s",
     "sl_moved_be": false,
     "sl_moved_lock": false
+  },
+  {
+    "date": "2026-09-22",
+    "time": "22 Sep 2026 02:31 IST",
+    "symbol": "BTC/USD",
+    "asset_label": "Bitcoin \u20bf",
+    "signal": "LONG",
+    "entry": 87016.296875,
+    "exit": 86906.109375,
+    "sl": 86936.517875,
+    "tp": 87135.965375,
+    "lots": 0.01,
+    "pnl": -1.1,
+    "reason": "SL_HIT",
+    "confidence": 88,
+    "duration": "2m 52s",
+    "sl_moved_be": false,
+    "sl_moved_lock": false
+  },
+  {
+    "date": "2026-09-22",
+    "time": "22 Sep 2026 02:37 IST",
+    "symbol": "USD/JPY",
+    "asset_label": "USD/JPY \ud83c\uddfa\ud83c\uddf8\ud83c\uddef\ud83c\uddf5",
+    "signal": "LONG",
+    "entry": 157.42999267578125,
+    "exit": 157.27200317382812,
+    "sl": 157.27999267578124,
+    "tp": 157.65499267578127,
+    "lots": 0.33,
+    "pnl": -52.14,
+    "reason": "SL_HIT",
+    "confidence": 88,
+    "duration": "53m 57s",
+    "sl_moved_be": false,
+    "sl_moved_lock": false
   }
 ]

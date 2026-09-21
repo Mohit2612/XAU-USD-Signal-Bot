@@ -198,7 +198,7 @@ ASSETS = {
 }
 
 # Global settings
-CAPITAL      = 100
+CAPITAL      = 500
 RISK_PERCENT = 0.05                     # 5% risk per trade ($5 risk)
 RISK_AMOUNT  = CAPITAL * RISK_PERCENT
 
@@ -212,7 +212,7 @@ ATR_SL_MULT            = 1.5
 MIN_ADX                = 22             # Stricter trend filter (was 20)
 MAX_CONSEC_LOSSES      = 2              # Pause after 2 losses (was 3)
 COOLDOWN_SAME_DIR      = 900            # 15 mins between same-direction signals
-DAILY_LOSS_LIMIT_PCT   = 0.50           # Stop trading if -50% daily loss ($10 on $20 acct)
+DAILY_LOSS_LIMIT_PCT   = 9999.0           # Stop trading if -50% daily loss ($10 on $20 acct)
 MAX_TRADE_DURATION_SEC = 7200           # Auto-close after 2 hours (7200 sec)
 
 # Trailing SL thresholds
@@ -1544,7 +1544,7 @@ def send_daily_summary():
     """Send end-of-day summary to Telegram."""
     global virtual_balance
     if 'virtual_balance' not in globals():
-        virtual_balance = 100.0
+        virtual_balance = 500.0
 
     stats = get_daily_stats()
     rolling = get_rolling_stats()
@@ -1584,7 +1584,7 @@ Bot will auto-pause if this continues. Review strategy.
     msg += f"""
 ━━━━━━━━━━━━━━━━━━━━
 🕐 Report generated at {datetime.now(IST).strftime('%H:%M IST')}
-💼 Capital: $100 | Balance: ${virtual_balance:.2f} | Risk/trade: {int(RISK_PERCENT*100)}%"""
+💼 Capital: $500 | Balance: ${virtual_balance:.2f} | Risk/trade: {int(RISK_PERCENT*100)}%"""
 
     send_telegram(msg)
 
@@ -2057,17 +2057,8 @@ def generate_signal(candles_5m, candles_15m, candles_1h, symbol="XAU/USD", asset
         return None
 
     # ═══════════════════════════════════════
-    # DAILY LOSS CHECK
+    # DAILY LOSS CHECK (Disabled for paper trading)
     # ═══════════════════════════════════════
-    CAPITAL = 100.0
-    if daily_pnl <= -(CAPITAL * DAILY_LOSS_LIMIT_PCT):
-        print(f"  ❌ Daily loss limit reached (${daily_pnl:.2f}). No more trades today.")
-        send_telegram(
-            f"🛑 <b>DAILY LOSS LIMIT HIT</b>\n"
-            f"Daily P&L: ${daily_pnl:.2f} (limit: -${CAPITAL * DAILY_LOSS_LIMIT_PCT:.2f})\n"
-            f"Bot paused for the day."
-        )
-        return None
 
     return {
         "symbol": symbol,
@@ -2098,7 +2089,7 @@ def generate_signal(candles_5m, candles_15m, candles_1h, symbol="XAU/USD", asset
 def send_signal(sig):
     global virtual_balance
     if 'virtual_balance' not in globals():
-        virtual_balance = 100.0
+        virtual_balance = 500.0
 
     direction = "🟢 LONG (BUY)" if sig["signal"] == "LONG" else "🔴 SHORT (SELL)"
     emoji     = "📈" if sig["signal"] == "LONG" else "📉"
