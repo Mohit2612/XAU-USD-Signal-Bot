@@ -1,12 +1,23 @@
 import os
+import sys
 import requests
 import time
 import json
 import math
 from datetime import datetime, date, timedelta
+
+# Fix Windows console encoding for emojis
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 from collections import deque
 import pytz
 import xml.etree.ElementTree as ET
+import db
+import macro_analyzer
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  🥇 XAU/USD ULTIMATE SIGNAL BOT — 2026 INSTITUTIONAL GRADE ║
 # ║                                                              ║
@@ -30,18 +41,169 @@ TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "8831251788:AAEIMLBzD0LwdG
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "953284393")
 TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "7299d19a5fa645a4ba5ac931ddf875a7")
 
-SYMBOL       = "XAU/USD"
+# ============================================
+# MULTI-ASSET CONFIGURATION REGISTRY
+# ============================================
+ASSETS = {
+    "XAU/USD": {
+        "type": "commodity",
+        "label": "Gold 🥇",
+        "yahoo_symbol": "GC=F",
+        "pip_value": 1.0,           # $1 per pip per 0.01 lot
+        "contract_size": 100,
+        "min_fvg": 1.20,
+        "equal_level_tol": 0.30,
+        "min_sl": 3.0,
+        "max_sl": 18.0,
+        "rr_ratio": 2.5,
+        "use_kill_zones": True,
+        "use_asian_sweep": True,
+        "min_displacement": 1.5,    # Min body size for engulfing
+        "min_ote_move": 2.0,        # Min move for OTE detection
+        "vwap_threshold": 1.0,      # Min distance from VWAP for bias
+        "wick_min": 1.0,            # Min wick for liquidity grab
+        "enabled": True,
+    },
+    "EUR/USD": {
+        "type": "forex",
+        "label": "EUR/USD 🇪🇺🇺🇸",
+        "yahoo_symbol": "EURUSD=X",
+        "pip_value": 0.0001,
+        "contract_size": 100000,
+        "min_fvg": 0.0005,
+        "equal_level_tol": 0.0003,
+        "min_sl": 0.0010,
+        "max_sl": 0.0050,
+        "rr_ratio": 2.0,
+        "use_kill_zones": True,
+        "use_asian_sweep": False,
+        "min_displacement": 0.0010,
+        "min_ote_move": 0.0020,
+        "vwap_threshold": 0.0005,
+        "wick_min": 0.0005,
+        "enabled": True,
+    },
+    "GBP/USD": {
+        "type": "forex",
+        "label": "GBP/USD 🇬🇧🇺🇸",
+        "yahoo_symbol": "GBPUSD=X",
+        "pip_value": 0.0001,
+        "contract_size": 100000,
+        "min_fvg": 0.0006,
+        "equal_level_tol": 0.0003,
+        "min_sl": 0.0012,
+        "max_sl": 0.0060,
+        "rr_ratio": 2.0,
+        "use_kill_zones": True,
+        "use_asian_sweep": False,
+        "min_displacement": 0.0012,
+        "min_ote_move": 0.0025,
+        "vwap_threshold": 0.0006,
+        "wick_min": 0.0006,
+        "enabled": True,
+    },
+    "USD/JPY": {
+        "type": "forex",
+        "label": "USD/JPY 🇺🇸🇯🇵",
+        "yahoo_symbol": "USDJPY=X",
+        "pip_value": 0.01,
+        "contract_size": 1000,
+        "min_fvg": 0.05,
+        "equal_level_tol": 0.03,
+        "min_sl": 0.10,
+        "max_sl": 0.50,
+        "rr_ratio": 2.0,
+        "use_kill_zones": True,
+        "use_asian_sweep": False,
+        "min_displacement": 0.10,
+        "min_ote_move": 0.20,
+        "vwap_threshold": 0.05,
+        "wick_min": 0.05,
+        "enabled": True,
+    },
+    "AUD/USD": {
+        "type": "forex",
+        "label": "AUD/USD 🇦🇺🇺🇸",
+        "yahoo_symbol": "AUDUSD=X",
+        "pip_value": 0.0001,
+        "contract_size": 100000,
+        "min_fvg": 0.0004,
+        "equal_level_tol": 0.0003,
+        "min_sl": 0.0008,
+        "max_sl": 0.0045,
+        "rr_ratio": 2.0,
+        "use_kill_zones": True,
+        "use_asian_sweep": False,
+        "min_displacement": 0.0008,
+        "min_ote_move": 0.0018,
+        "vwap_threshold": 0.0004,
+        "wick_min": 0.0004,
+        "enabled": True,
+    },
+    "USD/CAD": {
+        "type": "forex",
+        "label": "USD/CAD 🇺🇸🇨🇦",
+        "yahoo_symbol": "USDCAD=X",
+        "pip_value": 0.0001,
+        "min_fvg": 0.0004,
+        "equal_level_tol": 0.0003,
+        "min_sl": 0.0008,
+        "max_sl": 0.0045,
+        "rr_ratio": 2.0,
+        "use_kill_zones": True,
+        "use_asian_sweep": False,
+        "min_displacement": 0.0008,
+        "min_ote_move": 0.0018,
+        "vwap_threshold": 0.0004,
+        "wick_min": 0.0004,
+        "enabled": True,
+    },
+    "BTC/USD": {
+        "type": "crypto",
+        "label": "Bitcoin ₿",
+        "yahoo_symbol": "BTC-USD",
+        "pip_value": 1.0,
+        "contract_size": 1,
+        "min_fvg": 50.0,
+        "equal_level_tol": 30.0,
+        "min_sl": 100.0,
+        "max_sl": 1000.0,
+        "rr_ratio": 2.0,
+        "use_kill_zones": False,
+        "use_asian_sweep": False,
+        "min_displacement": 100.0,
+        "min_ote_move": 200.0,
+        "vwap_threshold": 50.0,
+        "wick_min": 50.0,
+        "enabled": True,
+    },
+    "ETH/USD": {
+        "type": "crypto",
+        "label": "Ethereum Ξ",
+        "yahoo_symbol": "ETH-USD",
+        "pip_value": 0.01,
+        "min_fvg": 3.0,
+        "equal_level_tol": 2.0,
+        "min_sl": 5.0,
+        "max_sl": 50.0,
+        "rr_ratio": 2.0,
+        "use_kill_zones": False,
+        "use_asian_sweep": False,
+        "min_displacement": 5.0,
+        "min_ote_move": 10.0,
+        "vwap_threshold": 3.0,
+        "wick_min": 3.0,
+        "enabled": True,
+    },
+}
+
+# Global settings
 CAPITAL      = 20
 RISK_PERCENT = 0.25                     # 25% risk per trade (required for $20 account)
 RISK_AMOUNT  = CAPITAL * RISK_PERCENT
 
-MAX_TRADES_PER_DAY     = 10             # Quality > quantity
+MAX_TRADES_PER_DAY     = 10             # Quality > quantity (shared across all assets)
 MIN_CONFIDENCE         = 50             # Only top-tier signals (was 70)
-MIN_SL_DOLLARS         = 3.0
-MAX_SL_DOLLARS         = 18.0
-MIN_FVG_SIZE           = 1.20
-EQUAL_LEVEL_TOL        = 0.30
-RR_RATIO               = 2.5           # Target 1:2.5 R:R (was 2.0)
 ATR_PERIOD             = 14
 ATR_SL_MULT            = 1.5
 MIN_ADX                = 22             # Stricter trend filter (was 20)
@@ -63,9 +225,6 @@ EMA_SLOW   = 50
 IST = pytz.timezone('Asia/Kolkata')
 
 PAPER_MODE = False  # Set False ONLY when ready for live execution
-
-# Gold contract: 1.00 lot = 100oz -> $1 move = $100/lot -> $1 move = $1 per 0.01 lot
-USD_PER_DOLLAR_MOVE_PER_001_LOT = 1.0
 
 # Trade journal file
 TRADE_JOURNAL_FILE = "trade_journal.json"
@@ -102,22 +261,26 @@ SILVER_BULLET_WINDOWS = {
 ASIAN_SESSION = {"start_h": 4, "start_m": 0, "end_h": 12, "end_m": 30}
 
 # ============================================
-# STATE
+# STATE (multi-asset)
 # ============================================
 trades_today          = 0
 last_trade_date       = None
-last_signal_direction = None
-last_signal_time      = 0
 consecutive_losses    = 0
 paused_until          = 0
 daily_pnl             = 0.0
+
+# Per-asset state
+last_signal_direction = {}  # {symbol: "LONG"/"SHORT"}
+last_signal_time      = {}  # {symbol: timestamp}
 asian_range_high      = None
 asian_range_low       = None
 asian_range_set_date  = None
 
-# Active trade state (auto-trade engine)
-active_trade = None
-# Structure: {
+# Active trades per asset (auto-trade engine)
+# Key = symbol, Value = trade dict
+active_trades = {}
+# Trade structure: {
+#   "symbol": "XAU/USD",
 #   "signal": "LONG"/"SHORT",
 #   "entry_price": float,
 #   "sl_price": float,
@@ -129,7 +292,7 @@ active_trade = None
 #   "sl_moved_lock": bool,
 #   "confidence": int,
 #   "reasons": list,
-#   "state": "MONITORING",  # MONITORING -> closed
+#   "state": "MONITORING",
 # }
 
 # Trade journal (in-memory, synced to file)
@@ -169,22 +332,24 @@ def send_telegram(message):
         print(f"Telegram error: {e}")
 
 # ============================================
-# FETCH CANDLES
+# FETCH CANDLES (multi-asset)
 # ============================================
-def get_candles(interval="5m", range_str="5d"):
+def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
     # Map intervals to TwelveData format
     td_interval_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h"}
     td_interval = td_interval_map.get(interval, "5min")
     
-    url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={td_interval}&outputsize=500&apikey={TWELVEDATA_API_KEY}"
+    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={td_interval}&outputsize=500&apikey={TWELVEDATA_API_KEY}"
     try:
         r = requests.get(url, timeout=15)
         data = r.json()
         
         if "values" not in data:
             # Fallback to Yahoo if TwelveData limit reached
-            print(f"TwelveData Error: {data}. Falling back to Yahoo Finance...")
-            y_url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={interval}&range={range_str}"
+            print(f"TwelveData Error for {symbol}: {data}. Falling back to Yahoo Finance...")
+            asset_config = ASSETS.get(symbol, {})
+            yahoo_sym = asset_config.get("yahoo_symbol", "GC=F")
+            y_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}?interval={interval}&range={range_str}"
             yr = requests.get(y_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
             y_data = yr.json()
             if "chart" not in y_data or not y_data["chart"]["result"]:
@@ -204,6 +369,10 @@ def get_candles(interval="5m", range_str="5d"):
                     "low": float(quote['low'][i]),
                     "close": float(quote['close'][i])
                 })
+            
+            # Save to db
+            if candles:
+                db.save_candles(symbol, interval, candles)
             return candles
 
         values = data["values"]
@@ -219,14 +388,19 @@ def get_candles(interval="5m", range_str="5d"):
                 "low": float(val["low"]),
                 "close": float(val["close"])
             })
+            
+        # Save to db
+        if candles:
+            db.save_candles(symbol, interval, candles)
+            
         return candles
     except Exception as e:
-        print(f"Candle fetch error: {e}")
+        print(f"Candle fetch error ({symbol}): {e}")
         return None
 
-def get_current_price():
+def get_current_price(symbol="XAU/USD"):
     """Fetch latest price for trade monitoring."""
-    candles = get_candles(interval="1m", range_str="1d")
+    candles = get_candles(symbol=symbol, interval="1m", range_str="1d")
     if candles and len(candles) > 0:
         return candles[-1]["close"]
     return None
@@ -443,7 +617,7 @@ def get_ema_confluence(candles):
 # ============================================
 # VWAP (Volume Weighted Average Price)
 # ============================================
-def calculate_vwap(candles):
+def calculate_vwap(candles, asset_cfg=None):
     """
     Calculate VWAP using typical price * estimated volume.
     Since TwelveData free tier may not give volume, we use
@@ -452,6 +626,8 @@ def calculate_vwap(candles):
     """
     if len(candles) < 5:
         return None, "NEUTRAL", 0
+
+    vwap_thresh = (asset_cfg or {}).get("vwap_threshold", 1.0)
 
     sum_tpv = 0
     sum_v = 0
@@ -466,13 +642,13 @@ def calculate_vwap(candles):
     if sum_v == 0:
         return None, "NEUTRAL", 0
 
-    vwap = round(sum_tpv / sum_v, 2)
+    vwap = round(sum_tpv / sum_v, 6)
     curr_price = candles[-1]["close"]
 
     # Price relative to VWAP
-    if curr_price > vwap + 1.0:
+    if curr_price > vwap + vwap_thresh:
         return vwap, "BULLISH", 10
-    elif curr_price < vwap - 1.0:
+    elif curr_price < vwap - vwap_thresh:
         return vwap, "BEARISH", 10
     elif curr_price > vwap:
         return vwap, "BULLISH", 5
@@ -484,7 +660,7 @@ def calculate_vwap(candles):
 # ============================================
 # OTE — OPTIMAL TRADE ENTRY (Fibonacci 62%-79%)
 # ============================================
-def detect_ote_zone(candles, bias):
+def detect_ote_zone(candles, bias, asset_cfg=None):
     """
     After a displacement move, check if price is in the
     62%-79% retracement zone (OTE = premium/discount).
@@ -492,6 +668,7 @@ def detect_ote_zone(candles, bias):
     if len(candles) < 15:
         return False, 0, None, None
 
+    min_ote_move = (asset_cfg or {}).get("min_ote_move", 2.0)
     recent = candles[-15:]
 
     if bias == "BULLISH":
@@ -499,7 +676,7 @@ def detect_ote_zone(candles, bias):
         low_val = min(c["low"] for c in recent[:-3])
         high_val = max(c["high"] for c in recent[-5:])
         move = high_val - low_val
-        if move < 2.0:
+        if move < min_ote_move:
             return False, 0, None, None
 
         # OTE zone: 62%-79% retracement from high
@@ -515,7 +692,7 @@ def detect_ote_zone(candles, bias):
         high_val = max(c["high"] for c in recent[:-3])
         low_val = min(c["low"] for c in recent[-5:])
         move = high_val - low_val
-        if move < 2.0:
+        if move < min_ote_move:
             return False, 0, None, None
 
         # OTE zone: 62%-79% retracement from low
@@ -679,10 +856,11 @@ def detect_order_block(candles, bias):
 # ============================================
 # EQUAL HIGHS / EQUAL LOWS (LIQUIDITY ZONES)
 # ============================================
-def detect_liquidity_zones(candles):
+def detect_liquidity_zones(candles, asset_cfg=None):
     if len(candles) < 10:
         return False, False, False, False
 
+    eq_tol = (asset_cfg or {}).get("equal_level_tol", 0.30)
     recent      = candles[-30:]
     highs       = [c["high"] for c in recent[:-2]]
     lows        = [c["low"]  for c in recent[:-2]]
@@ -693,7 +871,7 @@ def detect_liquidity_zones(candles):
     swept_high  = False
     for i in range(len(highs)):
         for j in range(i+1, len(highs)):
-            if abs(highs[i] - highs[j]) <= EQUAL_LEVEL_TOL:
+            if abs(highs[i] - highs[j]) <= eq_tol:
                 equal_highs = True
                 if last_high > max(highs[i], highs[j]):
                     swept_high = True
@@ -702,7 +880,7 @@ def detect_liquidity_zones(candles):
     swept_low  = False
     for i in range(len(lows)):
         for j in range(i+1, len(lows)):
-            if abs(lows[i] - lows[j]) <= EQUAL_LEVEL_TOL:
+            if abs(lows[i] - lows[j]) <= eq_tol:
                 equal_lows = True
                 if last_low < min(lows[i], lows[j]):
                     swept_low = True
@@ -712,20 +890,21 @@ def detect_liquidity_zones(candles):
 # ============================================
 # FVG WITH SIZE FILTER
 # ============================================
-def detect_fvg(candles):
+def detect_fvg(candles, asset_cfg=None):
     if len(candles) < 3:
         return None, 0
+    min_fvg = (asset_cfg or {}).get("min_fvg", 1.20)
     for i in range(len(candles)-3, max(len(candles)-10, 0), -1):
         c1 = candles[i]
         c3 = candles[i+2]
         if c1["high"] < c3["low"]:
             gap_size = c3["low"] - c1["high"]
-            if gap_size >= MIN_FVG_SIZE:
+            if gap_size >= min_fvg:
                 if candles[-1]["close"] > c1["high"]:
                     return "BULLISH_FVG", 8
         if c1["low"] > c3["high"]:
             gap_size = c1["low"] - c3["high"]
-            if gap_size >= MIN_FVG_SIZE:
+            if gap_size >= min_fvg:
                 if candles[-1]["close"] < c1["low"]:
                     return "BEARISH_FVG", 8
     return None, 0
@@ -733,7 +912,7 @@ def detect_fvg(candles):
 # ============================================
 # LIQUIDITY GRAB
 # ============================================
-def detect_liquidity_grab(candles):
+def detect_liquidity_grab(candles, asset_cfg=None):
     if len(candles) < 10:
         return None, 0
     recent       = candles[-10:]
@@ -745,21 +924,22 @@ def detect_liquidity_grab(candles):
         return None, 0
     max_high = max(recent_highs)
     min_low  = min(recent_lows)
+    wick_min = (asset_cfg or {}).get("wick_min", 1.0)
     grab, score = None, 0
     if prev["high"] > max_high:
         wick_size = prev["high"] - max(prev["open"], prev["close"])
-        if wick_size >= 1.0 and curr["close"] < curr["open"]:
+        if wick_size >= wick_min and curr["close"] < curr["open"]:
             grab, score = "BEARISH_GRAB", 2
     if prev["low"] < min_low:
         wick_size = min(prev["open"], prev["close"]) - prev["low"]
-        if wick_size >= 1.0 and curr["close"] > curr["open"]:
+        if wick_size >= wick_min and curr["close"] > curr["open"]:
             grab, score = "BULLISH_GRAB", 2
     return grab, score
 
 # ============================================
 # CANDLESTICK PATTERN (enhanced)
 # ============================================
-def check_candle_pattern(candles):
+def check_candle_pattern(candles, asset_cfg=None):
     if len(candles) < 3:
         return None, 0
 
@@ -771,7 +951,8 @@ def check_candle_pattern(candles):
     if (c2["open"] < c2["close"] and c3["open"] > c3["close"] and
             c3["open"] >= c2["close"] and c3["close"] <= c2["open"]):
         body_size = abs(c3["open"] - c3["close"])
-        if body_size > 1.5:  # Minimum body size for gold
+        min_disp = (asset_cfg or {}).get("min_displacement", 1.5)
+        if body_size > min_disp:  # Minimum body size for asset
             return "BEARISH_ENGULF", 3
         return "BEARISH_ENGULF", 2
 
@@ -779,7 +960,8 @@ def check_candle_pattern(candles):
     if (c2["open"] > c2["close"] and c3["open"] < c3["close"] and
             c3["open"] <= c2["close"] and c3["close"] >= c2["open"]):
         body_size = abs(c3["open"] - c3["close"])
-        if body_size > 1.5:
+        min_disp = (asset_cfg or {}).get("min_displacement", 1.5)
+        if body_size > min_disp:
             return "BULLISH_ENGULF", 3
         return "BULLISH_ENGULF", 2
 
@@ -933,40 +1115,46 @@ def check_entry_confirmation(candles, signal_direction):
 # ============================================
 # SMART SL PLACEMENT (structure + ATR blend)
 # ============================================
-def calculate_sl_distance(candles, bias, ob_high, ob_low, atr):
+def calculate_sl_distance(candles, bias, ob_high, ob_low, atr, asset_cfg=None):
+    min_sl = (asset_cfg or {}).get("min_sl", 3.0)
     curr = candles[-1]["close"]
-    atr_sl = (atr * ATR_SL_MULT) if atr else 8.0
+    atr_sl = (atr * ATR_SL_MULT) if atr else (min_sl * 2.5)
 
     if bias == "LONG":
         if ob_low is not None:
-            struct_sl = curr - (ob_low - 0.50)
+            struct_sl = curr - (ob_low - 0.50 * (asset_cfg or {}).get("pip_value", 1.0))
         else:
             swing_lows = find_swing_lows(candles[-30:])
-            struct_sl = curr - (swing_lows[-1][1] - 0.50) if swing_lows else 8.0
-        return max(struct_sl, atr_sl, MIN_SL_DOLLARS)
+            struct_sl = curr - (swing_lows[-1][1] - 0.50 * (asset_cfg or {}).get("pip_value", 1.0)) if swing_lows else (min_sl * 2.5)
+        return max(struct_sl, atr_sl, min_sl)
 
     elif bias == "SHORT":
         if ob_high is not None:
-            struct_sl = (ob_high + 0.50) - curr
+            struct_sl = (ob_high + 0.50 * (asset_cfg or {}).get("pip_value", 1.0)) - curr
         else:
             swing_highs = find_swing_highs(candles[-30:])
-            struct_sl = (swing_highs[-1][1] + 0.50) - curr if swing_highs else 8.0
-        return max(struct_sl, atr_sl, MIN_SL_DOLLARS)
+            struct_sl = (swing_highs[-1][1] + 0.50 * (asset_cfg or {}).get("pip_value", 1.0)) - curr if swing_highs else (min_sl * 2.5)
+        return max(struct_sl, atr_sl, min_sl)
 
-    return 8.0
+    return min_sl * 2.5
 
 # ============================================
 # CALCULATE LOTS
 # ============================================
-def calculate_lots(sl_dollars):
-    if sl_dollars <= 0:
+def calculate_lots(sl_price_diff, asset_cfg=None):
+    if sl_price_diff <= 0:
         return 0.01, 0, False
-    raw_lots = (RISK_AMOUNT / sl_dollars) * 0.01
+    
+    contract_size = (asset_cfg or {}).get("contract_size", 100)
+    raw_lots = RISK_AMOUNT / (sl_price_diff * contract_size)
     lots     = round(raw_lots, 2)
+    
     if lots < 0.01:
-        return 0.01, round(sl_dollars * 1.0, 2), False
+        actual_risk = sl_price_diff * 0.01 * contract_size
+        return 0.01, round(actual_risk, 2), False
+        
     lots        = min(lots, 0.50)
-    actual_risk = sl_dollars * (lots / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
+    actual_risk = sl_price_diff * lots * contract_size
     is_safe     = actual_risk <= RISK_AMOUNT * 1.5   # Relaxed safety margin
     return lots, round(actual_risk, 2), is_safe
 
@@ -1028,16 +1216,19 @@ def get_rolling_stats():
     }
 
 def save_state():
-    """Save bot state for the web dashboard."""
+    """Save bot state for the web dashboard (multi-asset)."""
     state = {
         "capital": CAPITAL,
         "daily_pnl": round(daily_pnl, 2),
         "trades_today": trades_today,
-        "active_trade": active_trade,
+        "active_trades": active_trades,
+        "active_trade": list(active_trades.values())[0] if active_trades else None,  # backward compat
         "consecutive_losses": consecutive_losses,
         "paused_until": paused_until,
         "last_signal_direction": last_signal_direction,
-        "last_update": time.time()
+        "last_update": time.time(),
+        "assets": {sym: {"label": cfg["label"], "type": cfg["type"], "enabled": cfg["enabled"]}
+                   for sym, cfg in ASSETS.items()},
     }
     try:
         with open("state.json", "w") as f:
@@ -1045,16 +1236,15 @@ def save_state():
     except Exception as e:
         pass
 
-# ============================================
-# AUTO-TRADE ENGINE
-# ============================================
-def execute_auto_trade(sig):
+def execute_auto_trade(sig, symbol="XAU/USD"):
     """
     Execute a trade (paper or live).
     Sets up the active_trade state for monitoring.
     """
-    global active_trade
+    global active_trades
 
+    asset_cfg = ASSETS.get(symbol, {})
+    rr_ratio = asset_cfg.get("rr_ratio", 2.5)
     entry_price = sig["price"]
 
     if sig["signal"] == "LONG":
@@ -1064,7 +1254,8 @@ def execute_auto_trade(sig):
         sl_price = entry_price + sig["sl_dollars"]
         tp_price = entry_price - sig["tp_dollars"]
 
-    active_trade = {
+    trade = {
+        "symbol": symbol,
         "signal": sig["signal"],
         "entry_price": entry_price,
         "sl_price": sl_price,
@@ -1081,56 +1272,67 @@ def execute_auto_trade(sig):
         "potential_loss": sig["potential_loss"],
         "state": "MONITORING",
     }
+    active_trades[symbol] = trade
 
-    mode = "🧪 PAPER" if PAPER_MODE else "⚡ LIVE"
-    direction = "🟢 BUY" if sig["signal"] == "LONG" else "🔴 SELL"
+    mode = "\U0001f9ea PAPER" if PAPER_MODE else "\u26a1 LIVE"
+    direction = "\U0001f7e2 BUY" if sig["signal"] == "LONG" else "\U0001f534 SELL"
+    asset_label = asset_cfg.get("label", symbol)
     now_ist = datetime.now(IST).strftime('%d %b %Y %H:%M IST')
 
-    msg = f"""{mode} <b>AUTO-TRADE EXECUTED</b> 🤖
+    msg = f"""{mode} <b>AUTO-TRADE EXECUTED</b> \U0001f916
 
-⚔️ <b>XAUUSD — {direction}</b>
-━━━━━━━━━━━━━━━━━━━━
-💰 <b>Entry:</b> {entry_price:.2f}
-🛑 <b>Stop Loss:</b> {sl_price:.2f} (${sig["sl_dollars"]:.2f})
-🎯 <b>Take Profit:</b> {tp_price:.2f} (${sig["tp_dollars"]:.2f})
-📦 <b>Lots:</b> {sig["lots"]}
-⚖️ <b>R:R:</b> 1:{RR_RATIO}
-🎯 <b>Confidence:</b> {sig["confidence"]}%
-💵 <b>Max Risk:</b> ~${sig["potential_loss"]:.2f}
-━━━━━━━━━━━━━━━━━━━━
-📋 <b>WHY THIS TRADE:</b>
-""" + "\n".join([f"  ✅ {r}" for r in sig["reasons"]]) + f"""
+\u2694\ufe0f <b>{asset_label} — {direction}</b>
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\U0001f4b0 <b>Entry:</b> {entry_price}
+\U0001f6d1 <b>Stop Loss:</b> {sl_price} ({sig["sl_dollars"]})
+\U0001f3af <b>Take Profit:</b> {tp_price} ({sig["tp_dollars"]})
+\U0001f4e6 <b>Lots:</b> {sig["lots"]}
+\u2696\ufe0f <b>R:R:</b> 1:{rr_ratio}
+\U0001f3af <b>Confidence:</b> {sig["confidence"]}%
+\U0001f4b5 <b>Max Risk:</b> ~${sig["potential_loss"]:.2f}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\U0001f4cb <b>WHY THIS TRADE:</b>
+""" + "\n".join([f"  \u2705 {r}" for r in sig["reasons"]]) + f"""
 
-━━━━━━━━━━━━━━━━━━━━
-🤖 <b>AUTO-MANAGEMENT:</b>
-  📊 Trailing SL → Breakeven at {int(TRAILING_BREAKEVEN_AT*100)}% TP
-  🔒 Profit Lock at {int(TRAILING_LOCK_AT*100)}% TP
-  ⏰ Max Duration: {MAX_TRADE_DURATION_SEC//3600}h
-━━━━━━━━━━━━━━━━━━━━
-🕐 {now_ist}"""
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\U0001f916 <b>AUTO-MANAGEMENT:</b>
+  \U0001f4ca Trailing SL \u2192 Breakeven at {int(TRAILING_BREAKEVEN_AT*100)}% TP
+  \U0001f512 Profit Lock at {int(TRAILING_LOCK_AT*100)}% TP
+  \u23f0 Max Duration: {MAX_TRADE_DURATION_SEC//3600}h
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\U0001f550 {now_ist}"""
 
     send_telegram(msg)
-    print(f"🤖 Auto-trade executed: {sig['signal']} @ {entry_price:.2f}")
+    print(f"\U0001f916 Auto-trade executed: {symbol} {sig['signal']} @ {entry_price}")
     return True
 
-def monitor_active_trade():
+def monitor_active_trades_all():
     """
-    Monitor the active trade:
-    - Check SL/TP hit
-    - Trailing SL (breakeven + profit lock)
-    - Time-based exit
+    Monitor ALL active trades across all symbols.
+    Returns list of closed trade results.
+    """
+    results = []
+    for symbol in list(active_trades.keys()):
+        result = monitor_single_trade(symbol)
+        if result:
+            results.append(result)
+    return results
+
+def monitor_single_trade(symbol):
+    """
+    Monitor a single active trade for a specific symbol.
     Returns: None if trade still active, or trade result dict
     """
-    global active_trade, consecutive_losses, paused_until, daily_pnl
+    global active_trades, consecutive_losses, paused_until, daily_pnl
 
-    if active_trade is None:
+    if symbol not in active_trades:
         return None
 
-    current_price = get_current_price()
+    current_price = get_current_price(symbol)
     if current_price is None or current_price == 0:
         return None
 
-    trade = active_trade
+    trade = active_trades[symbol]
     signal = trade["signal"]
     entry = trade["entry_price"]
     sl = trade["sl_price"]
@@ -1138,37 +1340,39 @@ def monitor_active_trade():
     elapsed = time.time() - trade["entry_time"]
 
     # Calculate current P&L
+    contract_size = ASSETS.get(symbol, {}).get("contract_size", 100)
     if signal == "LONG":
-        current_pnl = (current_price - entry) * (trade["lots"] / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
+        current_pnl = (current_price - entry) * trade["lots"] * contract_size
         price_progress = (current_price - entry) / trade["tp_dollars"] if trade["tp_dollars"] > 0 else 0
     else:
-        current_pnl = (entry - current_price) * (trade["lots"] / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
+        current_pnl = (entry - current_price) * trade["lots"] * contract_size
         price_progress = (entry - current_price) / trade["tp_dollars"] if trade["tp_dollars"] > 0 else 0
 
     result = None
 
     # --- CHECK TP HIT ---
     if signal == "LONG" and current_price >= tp:
-        result = close_trade("TP_HIT", current_price, current_pnl)
+        result = close_trade("TP_HIT", current_price, current_pnl, symbol)
     elif signal == "SHORT" and current_price <= tp:
-        result = close_trade("TP_HIT", current_price, current_pnl)
+        result = close_trade("TP_HIT", current_price, current_pnl, symbol)
 
     # --- CHECK SL HIT ---
     elif signal == "LONG" and current_price <= sl:
-        result = close_trade("SL_HIT", current_price, current_pnl)
+        result = close_trade("SL_HIT", current_price, current_pnl, symbol)
     elif signal == "SHORT" and current_price >= sl:
-        result = close_trade("SL_HIT", current_price, current_pnl)
+        result = close_trade("SL_HIT", current_price, current_pnl, symbol)
 
     # --- CHECK TIME EXIT ---
     elif elapsed >= MAX_TRADE_DURATION_SEC:
-        result = close_trade("TIME_EXIT", current_price, current_pnl)
+        result = close_trade("TIME_EXIT", current_price, current_pnl, symbol)
 
     else:
         # --- TRAILING SL LOGIC ---
         # Move SL to breakeven at 50% of TP distance
         if not trade["sl_moved_breakeven"] and price_progress >= TRAILING_BREAKEVEN_AT:
+            be_offset = 5.0 * pip_value  # 5 pips above entry
             if signal == "LONG":
-                new_sl = entry + 0.50  # Slightly above entry
+                new_sl = entry + be_offset
                 if new_sl > trade["sl_price"]:
                     trade["sl_price"] = new_sl
                     trade["sl_moved_breakeven"] = True
@@ -1180,7 +1384,7 @@ def monitor_active_trade():
                     )
                     print(f"🔄 SL moved to breakeven: {new_sl:.2f}")
             else:
-                new_sl = entry - 0.50
+                new_sl = entry - be_offset
                 if new_sl < trade["sl_price"]:
                     trade["sl_price"] = new_sl
                     trade["sl_moved_breakeven"] = True
@@ -1223,11 +1427,13 @@ def monitor_active_trade():
 
     return result
 
-def close_trade(reason, exit_price, pnl):
-    """Close the active trade and log it."""
-    global active_trade, consecutive_losses, paused_until, daily_pnl
+def close_trade(reason, exit_price, pnl, symbol="XAU/USD"):
+    """Close the active trade for a symbol and log it."""
+    global active_trades, consecutive_losses, paused_until, daily_pnl
 
-    trade = active_trade
+    trade = active_trades.get(symbol)
+    if trade is None:
+        return None
     now_ist = datetime.now(IST).strftime('%d %b %Y %H:%M IST')
     duration = time.time() - trade["entry_time"]
     duration_str = f"{int(duration // 60)}m {int(duration % 60)}s"
@@ -1258,10 +1464,14 @@ def close_trade(reason, exit_price, pnl):
     daily_pnl += pnl
     pnl_emoji = "💰" if pnl > 0 else "💸"
 
+    asset_label = ASSETS.get(symbol, {}).get("label", symbol)
+
     # Log to journal
     trade_record = {
         "date": date.today().isoformat(),
         "time": now_ist,
+        "symbol": symbol,
+        "asset_label": asset_label,
         "signal": trade["signal"],
         "entry": trade["entry_price"],
         "exit": exit_price,
@@ -1281,16 +1491,16 @@ def close_trade(reason, exit_price, pnl):
     direction = "LONG (BUY)" if trade["signal"] == "LONG" else "SHORT (SELL)"
     msg = f"""{emoji} <b>TRADE CLOSED — {result_text}</b>
 
-📊 <b>{direction}</b>
+📊 <b>{asset_label} — {direction}</b>
 ━━━━━━━━━━━━━━━━━━━━
-💰 Entry: {trade["entry_price"]:.2f}
-📍 Exit: {exit_price:.2f}
+💰 Entry: {trade["entry_price"]}
+📍 Exit: {exit_price}
 {pnl_emoji} <b>P&L: ${pnl:+.2f}</b>
 ━━━━━━━━━━━━━━━━━━━━
 ⏱ Duration: {duration_str}
-🛑 Original SL: {trade["original_sl"]:.2f}
-🔄 Final SL: {trade["sl_price"]:.2f}
-🎯 TP: {trade["tp_price"]:.2f}
+🛑 Original SL: {trade["original_sl"]}
+🔄 Final SL: {trade["sl_price"]}
+🎯 TP: {trade["tp_price"]}
 📦 Lots: {trade["lots"]}
 ━━━━━━━━━━━━━━━━━━━━
 📊 <b>Daily P&L:</b> ${daily_pnl:+.2f}
@@ -1298,27 +1508,29 @@ def close_trade(reason, exit_price, pnl):
 🕐 {now_ist}"""
 
     send_telegram(msg)
-    print(f"{emoji} Trade closed: {reason} | P&L: ${pnl:+.2f}")
+    print(f"{emoji} {symbol} Trade closed: {reason} | P&L: ${pnl:+.2f}")
 
-    active_trade = None
+    del active_trades[symbol]
     return trade_record
 
-def check_reverse_signal(new_signal_direction):
-    """If there's an active trade in opposite direction, close it."""
-    global active_trade
+def check_reverse_signal(new_signal_direction, symbol="XAU/USD"):
+    """If there's an active trade in opposite direction for this symbol, close it."""
+    global active_trades
 
-    if active_trade is None:
+    if symbol not in active_trades:
         return
 
-    if active_trade["signal"] != new_signal_direction:
-        current_price = get_current_price()
+    trade = active_trades[symbol]
+    if trade["signal"] != new_signal_direction:
+        current_price = get_current_price(symbol)
         if current_price:
-            entry = active_trade["entry_price"]
-            if active_trade["signal"] == "LONG":
-                pnl = (current_price - entry) * (active_trade["lots"] / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
+            entry = trade["entry_price"]
+            contract_size = ASSETS.get(symbol, {}).get("contract_size", 100)
+            if trade["signal"] == "LONG":
+                pnl = (current_price - entry) * trade["lots"] * contract_size
             else:
-                pnl = (entry - current_price) * (active_trade["lots"] / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
-            close_trade("REVERSE_EXIT", current_price, pnl)
+                pnl = (entry - current_price) * trade["lots"] * contract_size
+            close_trade("REVERSE_EXIT", current_price, pnl, symbol)
 
 # ============================================
 # DAILY SUMMARY REPORT
@@ -1370,7 +1582,7 @@ Bot will auto-pause if this continues. Review strategy.
 # ============================================
 # SCALPING ENGINE (1-Minute TF)
 # ============================================
-def generate_scalp_signal(candles_1m):
+def generate_scalp_signal(candles_1m, symbol="XAU/USD", asset_cfg=None):
     if not candles_1m or len(candles_1m) < 30:
         return None
 
@@ -1385,9 +1597,14 @@ def generate_scalp_signal(candles_1m):
     if vwap is None:
         return None
 
+    asset_cfg = asset_cfg or {}
     atr = calculate_atr(candles_1m, 14)
-    if atr is None or atr < 0.2:
-        atr = 0.5
+    min_fvg = asset_cfg.get("min_fvg", 1.20)
+    
+    # Do not hardcode 0.2! Use a multiple of min_fvg or pip_value
+    min_atr = asset_cfg.get("min_sl", 1.0) / 2.0
+    if atr is None or atr < min_atr:
+        atr = min_atr * 2.0
 
     # Bullish Scalp: Price > VWAP, EMA9 > EMA21, Close > EMA9, previous close < EMA9 (crossover pullback)
     if curr_price > vwap and ema9 > ema21:
@@ -1398,6 +1615,7 @@ def generate_scalp_signal(candles_1m):
             lots = max(0.01, round(RISK_AMOUNT / loss_dollars * 0.01, 2)) if loss_dollars > 0 else 0.01
             
             return {
+                "symbol": symbol,
                 "signal": "LONG",
                 "price": curr_price,
                 "sl_price": sl_price,
@@ -1431,6 +1649,7 @@ def generate_scalp_signal(candles_1m):
             lots = max(0.01, round(RISK_AMOUNT / loss_dollars * 0.01, 2)) if loss_dollars > 0 else 0.01
             
             return {
+                "symbol": symbol,
                 "signal": "SHORT",
                 "price": curr_price,
                 "sl_price": sl_price,
@@ -1465,7 +1684,7 @@ def generate_scalp_signal(candles_1m):
 # ============================================
 NEWS_CACHE = {"data": [], "last_fetched": 0}
 
-def fetch_high_impact_usd_news():
+def fetch_high_impact_news():
     global NEWS_CACHE
     current_time = time.time()
     # Cache for 4 hours (14400 seconds)
@@ -1491,7 +1710,7 @@ def fetch_high_impact_usd_news():
             date_str = event.find('date').text if event.find('date') is not None else ""
             time_str = event.find('time').text if event.find('time') is not None else ""
             
-            if country == "USD" and impact == "High" and time_str and date_str:
+            if country in ("USD", "INR") and impact == "High" and time_str and date_str:
                 if time_str.lower() == "all day" or time_str.lower() == "tentative":
                     continue
                 try:
@@ -1513,7 +1732,7 @@ def fetch_high_impact_usd_news():
         return NEWS_CACHE["data"]
 
 def check_news_block():
-    news_list = fetch_high_impact_usd_news()
+    news_list = fetch_high_impact_news()
     if not news_list:
         return False, ""
         
@@ -1528,7 +1747,7 @@ def check_news_block():
             
     return False, ""
 
-def generate_signal(candles_5m, candles_15m, candles_1h):
+def generate_signal(candles_5m, candles_15m, candles_1h, symbol="XAU/USD", asset_cfg=None):
     if not candles_5m or not candles_15m or not candles_1h:
         return None
 
@@ -1537,8 +1756,9 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
     # ═══════════════════════════════════════
     # GATE 1: KILL ZONE CHECK
     # ═══════════════════════════════════════
+    use_kz = (asset_cfg or {}).get("use_kill_zones", True)
     kill_zone = get_active_kill_zone()
-    if kill_zone is None:
+    if kill_zone is None or not use_kz:
         kill_zone = {"name": "ANY_TIME", "label": "24/7 Market Scan ⏱", "risk_mult": 1.0}
 
     print(f"\n🎯 Active: {kill_zone['label']}")
@@ -1547,6 +1767,11 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
     # GATE 1.5: NEWS CHECK
     # ═══════════════════════════════════════
     is_blocked, news_title = check_news_block()
+    
+    # ═══════════════════════════════════════
+    # MACRO TREND PREDICTION (New for Phase 2)
+    # ═══════════════════════════════════════
+    macro_info = macro_analyzer.analyze_macro_trend(symbol)
     if is_blocked:
         print(f"🚫 Trade blocked due to high-impact USD news: {news_title}")
         return None
@@ -1581,7 +1806,7 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
     ema8, ema21, ema50, ema_bias, ema_aligned, ema_score = get_ema_confluence(candles_5m)
 
     # VWAP
-    vwap, vwap_bias, vwap_score = calculate_vwap(candles_5m)
+    vwap, vwap_bias, vwap_score = calculate_vwap(candles_5m, asset_cfg)
 
     # 5M structure
     m5_bias, m5_bos, m5_choch = analyze_structure_bos(candles_5m)
@@ -1590,25 +1815,29 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
     ob_high, ob_low, price_in_ob = detect_order_block(candles_5m, tf_bias)
 
     # Liquidity
-    eq_highs, eq_lows, swept_high, swept_low = detect_liquidity_zones(candles_5m)
-    liquidity, liq_score = detect_liquidity_grab(candles_5m)
+    eq_highs, eq_lows, swept_high, swept_low = detect_liquidity_zones(candles_5m, asset_cfg)
+    liquidity, liq_score = detect_liquidity_grab(candles_5m, asset_cfg)
 
     # FVG
-    fvg, fvg_score = detect_fvg(candles_5m)
+    fvg, fvg_score = detect_fvg(candles_5m, asset_cfg)
 
     # Candle patterns
-    pattern, pat_score = check_candle_pattern(candles_5m)
+    pattern, pat_score = check_candle_pattern(candles_5m, asset_cfg)
 
     # RSI
     rsi = calculate_rsi(candles_5m)
     div_bull = detect_rsi_divergence(candles_5m, "BULLISH")
     div_bear = detect_rsi_divergence(candles_5m, "BEARISH")
 
-    # Asian range sweep
-    asian_swept, asian_score = detect_asian_sweep(candles_5m, tf_bias)
+    # Asian range sweep (only for XAU/USD)
+    use_asian = (asset_cfg or {}).get("use_asian_sweep", False)
+    if use_asian:
+        asian_swept, asian_score = detect_asian_sweep(candles_5m, tf_bias)
+    else:
+        asian_swept, asian_score = False, 0
 
     # OTE zone
-    ote_in_zone, ote_score, ote_bottom, ote_top = detect_ote_zone(candles_5m, tf_bias)
+    ote_in_zone, ote_score, ote_bottom, ote_top = detect_ote_zone(candles_5m, tf_bias, asset_cfg)
 
     # Momentum filter
     momentum_ok, momentum_score = check_momentum(candles_5m, tf_bias)
@@ -1697,12 +1926,13 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
             short_reasons.append(f"📉 EMA 8/21/50 Bearish{'  (Full Align)' if ema_aligned else ''} (+{ema_score})")
 
     # --- FVG (8 pts) ---
+    min_fvg = (asset_cfg or {}).get("min_fvg", 1.20)
     if fvg == "BULLISH_FVG" and tf_bias == "BULLISH":
         long_score += fvg_score
-        long_reasons.append(f"⚡ Bullish FVG (>=${MIN_FVG_SIZE}) (+{fvg_score})")
+        long_reasons.append(f"⚡ Bullish FVG (>=${min_fvg}) (+{fvg_score})")
     elif fvg == "BEARISH_FVG" and tf_bias == "BEARISH":
         short_score += fvg_score
-        short_reasons.append(f"⚡ Bearish FVG (>=${MIN_FVG_SIZE}) (+{fvg_score})")
+        short_reasons.append(f"⚡ Bearish FVG (>=${min_fvg}) (+{fvg_score})")
 
     # --- OTE Zone (8 pts) ---
     if ote_in_zone:
@@ -1817,12 +2047,14 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
     # ═══════════════════════════════════════
     sl_dollars = calculate_sl_distance(
         candles_5m, "LONG" if signal == "LONG" else "SHORT",
-        ob_high, ob_low, atr_5m
+        ob_high, ob_low, atr_5m, asset_cfg
     )
-    sl_dollars = min(sl_dollars, MAX_SL_DOLLARS)
-    tp_dollars = sl_dollars * RR_RATIO
+    max_sl = (asset_cfg or {}).get("max_sl", 18.0)
+    rr_ratio = (asset_cfg or {}).get("rr_ratio", 2.5)
+    sl_dollars = min(sl_dollars, max_sl)
+    tp_dollars = sl_dollars * rr_ratio
 
-    lots, actual_risk, is_safe = calculate_lots(sl_dollars)
+    lots, actual_risk, is_safe = calculate_lots(sl_dollars, asset_cfg)
     if not is_safe:
         print(f"  ❌ Signal rejected: risk ${actual_risk:.2f} too high.")
         return None
@@ -1840,6 +2072,7 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
         return None
 
     return {
+        "symbol": symbol,
         "signal": signal, "price": curr_price,
         "sl_dollars": round(sl_dollars, 2), "tp_dollars": round(tp_dollars, 2),
         "lots": lots, "potential_loss": actual_risk,
@@ -1857,6 +2090,8 @@ def generate_signal(candles_5m, candles_15m, candles_1h):
         "ote_in_zone": ote_in_zone,
         "momentum": momentum_ok,
         "entry_confirmed": entry_confirmed,
+        "macro_info": macro_info,
+        "rr_ratio": rr_ratio,
     }
 
 # ============================================
@@ -1911,7 +2146,14 @@ def send_signal(sig):
     if sig.get("ote_in_zone"):
         special_text += "🎯 <b>OTE Zone:</b> Price in 62-79% retracement\n"
 
-    msg = f"""⚔️ <b>XAUUSD PRECISION SIGNAL</b> {emoji}
+    macro_text = ""
+    if sig.get("macro_info"):
+        m_info = sig["macro_info"]
+        macro_text = f"🔮 <b>Macro (7D):</b> {m_info.get('prediction', 'N/A')}\n"
+        
+    symbol_display = sig.get("symbol", "XAU/USD")
+    
+    msg = f"""⚔️ <b>{symbol_display} PRECISION SIGNAL</b> {emoji}
 ━━━━━━━━━━━━━━━━━━━━
 🎯 <b>Kill Zone:</b> {sig.get("kill_zone", "N/A")}
 📊 <b>Direction:</b> {direction}
@@ -1919,10 +2161,11 @@ def send_signal(sig):
 🛑 <b>Stop Loss:</b> {sl_price:.2f} (${sig["sl_dollars"]:.2f} away)
 🎯 <b>Take Profit:</b> {tp_price:.2f} (${sig["tp_dollars"]:.2f} away)
 📦 <b>Lots:</b> {sig["lots"]}
-⚖️ <b>R:R:</b> 1:{RR_RATIO}
+⚖️ <b>R:R:</b> 1:{sig.get("rr_ratio", 2.5)}
 🎯 <b>Confidence:</b> {sig["confidence"]}%
 💵 <b>Max Risk:</b> ~${sig["potential_loss"]:.2f} ({int(RISK_PERCENT*100)}% of capital)
 ━━━━━━━━━━━━━━━━━━━━
+{macro_text}
 📋 <b>WHY THIS TRADE ({len(sig["reasons"])} confluences):</b>
 {reasons_text}
 
@@ -1938,7 +2181,7 @@ def send_signal(sig):
           f"Conf: {sig['confidence']}% | Risk: ${sig['potential_loss']:.2f}")
 
 # ============================================
-# MAIN LOOP — 2026 ULTIMATE ENGINE
+# MAIN LOOP — 2026 MULTI-ASSET ENGINE
 # ============================================
 def main():
     global trades_today, last_trade_date, last_signal_direction
@@ -1951,7 +2194,11 @@ def main():
     # Load trade journal
     load_trade_journal()
 
-    print("🚀 XAUUSD Ultimate Signal Bot v2.0 Starting...")
+    # Build enabled assets list
+    enabled_assets = [sym for sym, cfg in ASSETS.items() if cfg.get("enabled", True)]
+
+    print("🚀 Multi-Asset Signal Bot v3.0 Starting...")
+    print(f"Enabled assets: {', '.join(enabled_assets)}")
     print(f"Capital: ${CAPITAL} | Risk/trade: ${RISK_AMOUNT:.2f} ({int(RISK_PERCENT*100)}%) | "
           f"Min Confidence: {MIN_CONFIDENCE}%")
     print(f"Paper mode: {PAPER_MODE}")
@@ -1965,12 +2212,13 @@ def main():
             f"({rolling['win_rate']}%) | P&L: ${rolling['pnl']:+.2f}"
         )
 
+    assets_text = "\n".join([f"  • {ASSETS[sym]['label']}" for sym in enabled_assets])
     send_telegram(
-        f"🚀 <b>XAUUSD ULTIMATE BOT v2.0 LIVE</b>\n\n"
+        f"🚀 <b>MULTI-ASSET SIGNAL BOT v3.0 LIVE</b>\n\n"
         f"{'🧪 PAPER MODE' if PAPER_MODE else '⚡ LIVE MODE'}\n\n"
+        f"<b>📊 Active Assets:</b>\n{assets_text}\n\n"
         f"<b>🔥 2026 Strategy Stack:</b>\n"
         f"  • ICT Kill Zone + Silver Bullet Timing\n"
-        f"  • Asian Range Sweep (Judas Swing)\n"
         f"  • VWAP + EMA Confluence (8/21/50)\n"
         f"  • OTE Fibonacci (62-79%)\n"
         f"  • BOS/CHoCH + Order Blocks + FVG\n"
@@ -1978,12 +2226,12 @@ def main():
         f"  • Auto Buy/Sell + Trailing SL + Breakeven\n\n"
         f"<b>⚙️ Settings:</b>\n"
         f"  Capital: ${CAPITAL} | Risk: {int(RISK_PERCENT*100)}%/trade\n"
-        f"  Min Confidence: {MIN_CONFIDENCE}% | R:R: 1:{RR_RATIO}\n"
+        f"  Min Confidence: {MIN_CONFIDENCE}%\n"
         f"  Max Trades/Day: {MAX_TRADES_PER_DAY}\n"
         f"  Auto-Trade: ✅ | Trailing SL: ✅ | Breakeven: ✅\n"
         f"  Daily Loss Limit: -{int(DAILY_LOSS_LIMIT_PCT*100)}%\n"
         f"{rolling_text}\n\n"
-        f"Scanning during Kill Zones only ⚔️"
+        f"Scanning {len(enabled_assets)} assets ⚔️"
     )
 
     last_summary_date = None
@@ -2006,137 +2254,121 @@ def main():
                 print(f"\n📅 New day: {today}")
                 send_telegram(f"📅 <b>New Day: {today}</b>\nSignals remaining: {MAX_TRADES_PER_DAY}")
 
-            # ═══ MONITOR ACTIVE TRADE ═══
-            if active_trade is not None:
-                result = monitor_active_trade()
-                if result:
-                    print(f"📊 Trade closed: {result.get('reason', 'unknown')} | P&L: ${result.get('pnl', 0):+.2f}")
+            # ═══ MONITOR ALL ACTIVE TRADES ═══
+            results = monitor_active_trades_all()
+            for result in results:
+                print(f"📊 {result.get('symbol', '?')} Trade closed: {result.get('reason', 'unknown')} | P&L: ${result.get('pnl', 0):+.2f}")
 
-            # ═══ LOSS-STREAK CIRCUIT BREAKER ═══
-            # if consecutive_losses >= MAX_CONSEC_LOSSES and time.time() < paused_until:
-            #     mins = int((paused_until - time.time()) / 60)
-            #     print(f"⏸️ Paused after {consecutive_losses} losses. {mins} min left.")
-            #     time.sleep(60)  # Check every minute while paused
-            #     continue
-            # ═══ DAILY LOSS LIMIT ═══
-            # if daily_pnl <= -(CAPITAL * DAILY_LOSS_LIMIT_PCT):
-            #     print(f"🛑 Daily loss limit hit (${daily_pnl:.2f}). Sleeping 1hr...")
-            #     time.sleep(3600)
-            #     continue
-
-            # ═══ WIN RATE AUTO-PAUSE ═══
-            # rolling = get_rolling_stats()
-            # if rolling and rolling["total"] >= 10 and rolling["win_rate"] < 50:
-            #     print(f"⚠️ Win rate critically low ({rolling['win_rate']}%). Auto-pause 2hrs.")
-            #     send_telegram(
-            #         f"⚠️ <b>AUTO-PAUSE: Win rate critical</b>\n"
-            #         f"Win Rate: {rolling['win_rate']}% (last {rolling['total']} trades)\n"
-            #         f"Bot paused for 2 hours for safety."
-            #     )
-            #     time.sleep(7200)
-            #     continue
+            # ═══ HEARTBEAT ═══
+            if time.time() - last_heartbeat_time > 3600:
+                active_count = len(active_trades)
+                send_telegram(
+                    f"💓 <b>Bot Heartbeat</b>\n"
+                    f"Scanning {len(enabled_assets)} assets.\n"
+                    f"Active trades: {active_count}\n"
+                    f"Daily P&L: ${daily_pnl:+.2f}"
+                )
+                last_heartbeat_time = time.time()
 
             session = get_session_label()
             print(f"\n[{now.strftime('%H:%M')}] {session} | "
                   f"Signals: {trades_today}/{MAX_TRADES_PER_DAY} | "
+                  f"Active: {len(active_trades)} | "
                   f"Daily P&L: ${daily_pnl:+.2f}")
 
-            # ═══ DAILY LIMIT ═══
-            # if trades_today >= MAX_TRADES_PER_DAY:
-            #     print("Daily limit reached. Sleeping 30min...")
-            #     time.sleep(1800)
-            #     continue
+            # ═══ ITERATE THROUGH ALL ENABLED ASSETS ═══
+            for symbol in enabled_assets:
+                asset_cfg = ASSETS[symbol]
+                asset_type = asset_cfg.get("type", "forex")
 
-            # ═══ WEEKEND ═══
-            # if now.weekday() >= 5:
-            #     print("Weekend. Sleeping 1hr...")
-            #     time.sleep(3600)
-            #     continue
+                # Skip forex/commodity on weekends
+                if asset_type in ("forex", "commodity") and now.weekday() >= 5:
+                    continue
 
-            # ═══ HEARTBEAT ═══
-            if time.time() - last_heartbeat_time > 3600:
-                send_telegram(f"💓 <b>Bot Heartbeat</b>\nActive and scanning the market.\nDaily P&L: ${daily_pnl:+.2f}")
-                last_heartbeat_time = time.time()
+                # Skip if already have an active trade for this symbol
+                if symbol in active_trades:
+                    continue
 
-            # ═══ KILL ZONE CHECK (skip fetching data if not in KZ) ═══
-            # ═══ KILL ZONE CHECK ═══
-            kill_zone = get_active_kill_zone()
-            if kill_zone is None:
-                # Agar kill zone nahi hai tab bhi scan karega
-                kill_zone = {"name": "ANY_TIME", "label": "24/7 Market Scan ⏱", "risk_mult": 1.0}
+                print(f"\n--- Scanning {asset_cfg['label']} ({symbol}) ---")
 
+                # ═══ FETCH CANDLES FOR THIS SYMBOL ═══
+                candles_1m = get_candles(symbol, "1m", "1d")
+                time.sleep(2)  # Rate limiting
+                candles_5m = get_candles(symbol, "5m", "5d")
+                time.sleep(2)
+                candles_15m = get_candles(symbol, "15m", "5d")
+                time.sleep(2)
+                candles_1h = get_candles(symbol, "1h", "5d")
+                time.sleep(2)
 
+                if not candles_1m or not candles_5m or not candles_15m or not candles_1h:
+                    print(f"  Fetch failed for {symbol}. Skipping...")
+                    continue
 
-            # ═══ FETCH CANDLES ═══
-            print("Fetching candles...")
-            candles_1m = get_candles("1m", "1d")
-            time.sleep(1)
-            candles_5m = get_candles("5m", "5d")
-            time.sleep(1)
-            candles_15m = get_candles("15m", "5d")
-            time.sleep(1)
-            candles_1h = get_candles("1h", "5d")
+                # ═══ UPDATE ASIAN RANGE (only for XAU/USD) ═══
+                if asset_cfg.get("use_asian_sweep", False):
+                    update_asian_range(candles_5m)
 
-            if not candles_1m or not candles_5m or not candles_15m or not candles_1h:
-                print("Fetch failed. Retry in 1min...")
-                time.sleep(60)
-                continue
+                # ═══ GENERATE SIGNAL ═══
+                # 1. Try Scalping Signal (1M)
+                sig = generate_scalp_signal(candles_1m, symbol, asset_cfg)
 
-            # ═══ UPDATE ASIAN RANGE ═══
-            update_asian_range(candles_5m)
+                # 2. Try Primary Strategy (5M/15M/1H)
+                if not sig:
+                    sig = generate_signal(candles_5m, candles_15m, candles_1h, symbol, asset_cfg)
 
-            # ═══ GENERATE SIGNAL ═══
-            # 1. Try Scalping Signal (1M)
-            sig = generate_scalp_signal(candles_1m)
-            
-            # 2. Try Primary Strategy (5M/15M/1H)
-            if not sig:
-                sig = generate_signal(candles_5m, candles_15m, candles_1h)
+                if sig:
+                    now_ts = time.time()
+                    sym_last_dir = last_signal_direction.get(symbol)
+                    sym_last_time = last_signal_time.get(symbol, 0)
 
-            if sig:
-                now_ts = time.time()
-                if (last_signal_direction == sig["signal"] and
-                        now_ts - last_signal_time < COOLDOWN_SAME_DIR):
-                    print("Same direction within cooldown — skipping.")
+                    if (sym_last_dir == sig["signal"] and
+                            now_ts - sym_last_time < COOLDOWN_SAME_DIR):
+                        print(f"  Same direction within cooldown for {symbol} — skipping.")
+                    else:
+                        # Check for reverse signal (close existing trade)
+                        check_reverse_signal(sig["signal"], symbol)
+
+                        # Send signal notification
+                        send_signal(sig)
+
+                        # Auto-execute trade
+                        if execute_auto_trade(sig, symbol):
+                            trades_today += 1
+                            last_signal_time[symbol] = now_ts
+                            last_signal_direction[symbol] = sig["signal"]
+
+                            if trades_today >= MAX_TRADES_PER_DAY:
+                                send_telegram(
+                                    f"🔴 <b>Daily Limit Reached</b>\n"
+                                    f"{MAX_TRADES_PER_DAY}/{MAX_TRADES_PER_DAY} signals sent.\n"
+                                    f"Resuming tomorrow."
+                                )
+                                break  # Stop scanning more assets
                 else:
-                    # Check for reverse signal (close existing trade)
-                    check_reverse_signal(sig["signal"])
+                    print(f"  No signal for {symbol}.")
 
-                    # Send signal notification
-                    send_signal(sig)
+            # ═══ SAVE STATE FOR DASHBOARD ═══
+            save_state()
 
-                    # Auto-execute trade
-                    if execute_auto_trade(sig):
-                        trades_today += 1
-                        last_signal_time = now_ts
-                        last_signal_direction = sig["signal"]
-
-                        if trades_today >= MAX_TRADES_PER_DAY:
-                            send_telegram(
-                                f"🔴 <b>Daily Limit Reached</b>\n"
-                                f"{MAX_TRADES_PER_DAY}/{MAX_TRADES_PER_DAY} signals sent.\n"
-                                f"Resuming tomorrow."
-                            )
-            else:
-                print("No signal. Waiting...")
-
-            # ═══ SLEEP UNTIL NEXT CANDLE ═══
+            # ═══ SLEEP UNTIL NEXT CYCLE ═══
             ts = time.time()
-            sleep_time = (60 - (ts % 60)) + 3 # Scalping requires 1-minute checks
-            print(f"Sleeping {int(sleep_time)}s until next candle close...")
+            sleep_time = (60 - (ts % 60)) + 3  # Align to next minute
+            print(f"\nSleeping {int(sleep_time)}s until next cycle...")
             time.sleep(sleep_time)
 
         except KeyboardInterrupt:
-            # Close active trade on shutdown
-            if active_trade:
-                current_price = get_current_price()
+            # Close all active trades on shutdown
+            for symbol, trade in list(active_trades.items()):
+                current_price = get_current_price(symbol)
                 if current_price:
-                    entry = active_trade["entry_price"]
-                    if active_trade["signal"] == "LONG":
-                        pnl = (current_price - entry) * (active_trade["lots"] / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
+                    entry = trade["entry_price"]
+                    pip_value = ASSETS.get(symbol, {}).get("pip_value", 1.0)
+                    if trade["signal"] == "LONG":
+                        pnl = (current_price - entry) * (trade["lots"] / 0.01) * pip_value
                     else:
-                        pnl = (entry - current_price) * (active_trade["lots"] / 0.01) * USD_PER_DOLLAR_MOVE_PER_001_LOT
-                    close_trade("BOT_SHUTDOWN", current_price, pnl)
+                        pnl = (entry - current_price) * (trade["lots"] / 0.01) * pip_value
+                    close_trade("BOT_SHUTDOWN", current_price, pnl, symbol)
 
             send_daily_summary()
             send_telegram("🔴 <b>Bot stopped.</b>")

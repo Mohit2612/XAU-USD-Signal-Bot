@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Bot state files
+trade_journal.json
+state.json
+*.db
