@@ -175,7 +175,7 @@ ASSETS = {
         "min_ote_move": 200.0,
         "vwap_threshold": 50.0,
         "wick_min": 50.0,
-        "enabled": False,
+        "enabled": True,
     },
     "ETH/USD": {
         "type": "crypto",
