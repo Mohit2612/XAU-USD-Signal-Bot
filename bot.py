@@ -198,9 +198,12 @@ ASSETS = {
 }
 
 # Global settings
-CAPITAL      = 20
-RISK_PERCENT = 0.25                     # 25% risk per trade (required for $20 account)
+CAPITAL      = 100
+RISK_PERCENT = 0.05                     # 5% risk per trade ($5 risk)
 RISK_AMOUNT  = CAPITAL * RISK_PERCENT
+
+# Virtual Portfolio Tracking
+virtual_balance = CAPITAL
 
 MAX_TRADES_PER_DAY     = 10             # Quality > quantity (shared across all assets)
 MIN_CONFIDENCE         = 50             # Only top-tier signals (was 70)
@@ -1497,6 +1500,7 @@ def close_trade(reason, exit_price, pnl, symbol="XAU/USD"):
 💰 Entry: {trade["entry_price"]}
 📍 Exit: {exit_price}
 {pnl_emoji} <b>P&L: ${pnl:+.2f}</b>
+💵 <b>Current Balance:</b> ${virtual_balance:.2f}
 ━━━━━━━━━━━━━━━━━━━━
 ⏱ Duration: {duration_str}
 🛑 Original SL: {trade["original_sl"]}
@@ -1509,7 +1513,7 @@ def close_trade(reason, exit_price, pnl, symbol="XAU/USD"):
 🕐 {now_ist}"""
 
     send_telegram(msg)
-    print(f"{emoji} {symbol} Trade closed: {reason} | P&L: ${pnl:+.2f}")
+    print(f"{emoji} {symbol} Trade closed: {reason} | P&L: ${pnl:+.2f} | Balance: ${virtual_balance:.2f}")
 
     del active_trades[symbol]
     return trade_record
@@ -1538,6 +1542,10 @@ def check_reverse_signal(new_signal_direction, symbol="XAU/USD"):
 # ============================================
 def send_daily_summary():
     """Send end-of-day summary to Telegram."""
+    global virtual_balance
+    if 'virtual_balance' not in globals():
+        virtual_balance = 100.0
+
     stats = get_daily_stats()
     rolling = get_rolling_stats()
     now_ist = datetime.now(IST).strftime('%d %b %Y')
@@ -1576,7 +1584,7 @@ Bot will auto-pause if this continues. Review strategy.
     msg += f"""
 ━━━━━━━━━━━━━━━━━━━━
 🕐 Report generated at {datetime.now(IST).strftime('%H:%M IST')}
-💼 Capital: ${CAPITAL} | Risk/trade: {int(RISK_PERCENT*100)}%"""
+💼 Capital: $100 | Balance: ${virtual_balance:.2f} | Risk/trade: {int(RISK_PERCENT*100)}%"""
 
     send_telegram(msg)
 
@@ -2051,6 +2059,7 @@ def generate_signal(candles_5m, candles_15m, candles_1h, symbol="XAU/USD", asset
     # ═══════════════════════════════════════
     # DAILY LOSS CHECK
     # ═══════════════════════════════════════
+    CAPITAL = 100.0
     if daily_pnl <= -(CAPITAL * DAILY_LOSS_LIMIT_PCT):
         print(f"  ❌ Daily loss limit reached (${daily_pnl:.2f}). No more trades today.")
         send_telegram(
@@ -2087,6 +2096,10 @@ def generate_signal(candles_5m, candles_15m, candles_1h, symbol="XAU/USD", asset
 # FORMAT & SEND SIGNAL (enhanced)
 # ============================================
 def send_signal(sig):
+    global virtual_balance
+    if 'virtual_balance' not in globals():
+        virtual_balance = 100.0
+
     direction = "🟢 LONG (BUY)" if sig["signal"] == "LONG" else "🔴 SHORT (SELL)"
     emoji     = "📈" if sig["signal"] == "LONG" else "📉"
 
@@ -2119,6 +2132,8 @@ def send_signal(sig):
     ob_text = ""
     if sig.get("ob_high"):
         ob_text = (
+            f"💰 <b>Risk Amount:</b> ${sig['potential_loss']:.2f}\n"
+            f"💵 <b>Virtual Balance:</b> ${virtual_balance:.2f}\n"
             f"📦 <b>Order Block:</b> {sig['ob_low']:.2f} - {sig['ob_high']:.2f} "
             f"{'✅ inside OB' if sig['price_in_ob'] else ''}\n"
         )
