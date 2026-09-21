@@ -2300,12 +2300,8 @@ def main():
                     update_asian_range(candles_5m)
 
                 # ═══ GENERATE SIGNAL ═══
-                # 1. Try Scalping Signal (1M)
-                sig = generate_scalp_signal(candles_1m, symbol, asset_cfg)
-
-                # 2. Try Primary Strategy (5M/15M/1H)
-                if not sig:
-                    sig = generate_signal(candles_5m, candles_15m, candles_1h, symbol, asset_cfg)
+                # 1. Try Primary Strategy (5M/15M/1H)
+                sig = generate_signal(candles_5m, candles_15m, candles_1h, symbol, asset_cfg)
 
                 if sig:
                     now_ts = time.time()
