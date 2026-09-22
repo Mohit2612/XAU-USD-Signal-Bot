@@ -20,7 +20,6 @@ import pytz
 import xml.etree.ElementTree as ET
 import db
 import macro_analyzer
-import MetaTrader5 as mt5
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  🥇 XAU/USD ULTIMATE SIGNAL BOT — 2026 INSTITUTIONAL GRADE ║
 # ║                                                              ║
@@ -44,20 +43,6 @@ TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "8831251788:AAEIMLBzD0LwdG
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "953284393")
 TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "3639e4c2a7214a788158e6fb2786a5a4")
 FINNHUB_API_KEY    = os.environ.get("FINNHUB_API_KEY", "dapc11pr01qqnrhqh0t0dapc11pr01qqnrhqh0tg")  # Put your Finnhub API key here if you have one
-
-# MT5 Configuration
-MT5_SYMBOL = "XAUUSD" # Change to "XAUUSD.m", "GOLD" etc if your broker uses a suffix
-MT5_ENABLED = True
-
-# ============================================
-# MT5 INITIALIZATION
-# ============================================
-if MT5_ENABLED:
-    if not mt5.initialize():
-        print(f"MT5 initialize() failed, error code = {mt5.last_error()}")
-        MT5_ENABLED = False
-    else:
-        print(f"✅ MT5 Initialized successfully. Primary data source: MT5 ({MT5_SYMBOL})")
 
 # ============================================
 # MULTI-ASSET CONFIGURATION REGISTRY
@@ -356,33 +341,6 @@ def send_telegram(message):
 # FETCH CANDLES (multi-asset)
 # ============================================
 def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
-    # --- 1. MT5 PRIMARY SOURCE ---
-    if MT5_ENABLED and symbol == "XAU/USD":
-        mt5_interval_map = {
-            "1m": mt5.TIMEFRAME_M1,
-            "5m": mt5.TIMEFRAME_M5,
-            "15m": mt5.TIMEFRAME_M15,
-            "1h": mt5.TIMEFRAME_H1
-        }
-        mt5_tf = mt5_interval_map.get(interval, mt5.TIMEFRAME_M5)
-        rates = mt5.copy_rates_from_pos(MT5_SYMBOL, mt5_tf, 0, 500)
-        
-        if rates is not None and len(rates) > 0:
-            candles = []
-            for r in reversed(rates): # Newest first to match bot logic
-                dt_str = datetime.fromtimestamp(r['time']).strftime('%Y-%m-%d %H:%M:%S')
-                candles.append({
-                    "datetime": dt_str,
-                    "open": float(r['open']),
-                    "high": float(r['high']),
-                    "low": float(r['low']),
-                    "close": float(r['close'])
-                })
-            return candles
-        else:
-            print(f"MT5 Error: Could not fetch data for {MT5_SYMBOL}. Falling back to TwelveData...")
-
-    # --- 2. TWELVEDATA FALLBACK ---
     # Map intervals to TwelveData format
     td_interval_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h"}
     td_interval = td_interval_map.get(interval, "5min")
