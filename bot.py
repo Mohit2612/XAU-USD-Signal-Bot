@@ -2044,28 +2044,20 @@ def generate_signal(candles_5m, candles_15m, candles_1h, symbol="XAU/USD", asset
     long_confirmations = sum([macd_bullish, rsi_bullish, ema_bias == "BULLISH"])
     short_confirmations = sum([macd_bearish, rsi_bearish, ema_bias == "BEARISH"])
 
-    # HIGH QUALITY LONG REQUIREMENTS
-    if (long_score > short_score and 
-        long_score >= MIN_CONFIDENCE and 
-        tf_bias == "BULLISH" and 
-        tf_aligned and 
-        long_confirmations >= 2):
-        
+    # LONG REQUIREMENTS (Relaxed)
+    if long_score > short_score and long_score >= MIN_CONFIDENCE:
         signal, score, reasons = "LONG", min(long_score, 99), long_reasons
-        reasons.append(f"✅ HIGH QUALITY CONFLUENCE ({long_confirmations}/3 Indicators + HTF Aligned)")
+        if long_confirmations >= 2 and tf_aligned:
+            reasons.append(f"✅ HIGH QUALITY CONFLUENCE ({long_confirmations}/3 Indicators + HTF Aligned)")
 
-    # HIGH QUALITY SHORT REQUIREMENTS
-    elif (short_score > long_score and 
-          short_score >= MIN_CONFIDENCE and 
-          tf_bias == "BEARISH" and 
-          tf_aligned and 
-          short_confirmations >= 2):
-        
+    # SHORT REQUIREMENTS (Relaxed)
+    elif short_score > long_score and short_score >= MIN_CONFIDENCE:
         signal, score, reasons = "SHORT", min(short_score, 99), short_reasons
-        reasons.append(f"✅ HIGH QUALITY CONFLUENCE ({short_confirmations}/3 Indicators + HTF Aligned)")
+        if short_confirmations >= 2 and tf_aligned:
+            reasons.append(f"✅ HIGH QUALITY CONFLUENCE ({short_confirmations}/3 Indicators + HTF Aligned)")
 
     if not signal:
-        print("  ❌ No signal — Strict confluences (MACD, RSI, HTF alignment) not met.")
+        print(f"  ❌ No signal — Confidence score below {MIN_CONFIDENCE}%.")
         return None
 
     # ═══════════════════════════════════════
