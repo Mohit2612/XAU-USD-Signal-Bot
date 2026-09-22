@@ -2265,7 +2265,6 @@ def main():
     )
 
     last_summary_date = None
-    last_heartbeat_time = 0
 
     while True:
         try:
@@ -2289,16 +2288,6 @@ def main():
             for result in results:
                 print(f"📊 {result.get('symbol', '?')} Trade closed: {result.get('reason', 'unknown')} | P&L: ${result.get('pnl', 0):+.2f}")
 
-            # ═══ HEARTBEAT ═══
-            if time.time() - last_heartbeat_time > 3600:
-                active_count = len(active_trades)
-                send_telegram(
-                    f"💓 <b>Bot Heartbeat</b>\n"
-
-                    f"Active trades: {active_count}\n"
-                    f"Daily P&L: ${daily_pnl:+.2f}"
-                )
-                last_heartbeat_time = time.time()
 
             session = get_session_label()
             print(f"\n[{now.strftime('%H:%M')}] {session} | "

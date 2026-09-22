@@ -2010,10 +2010,6 @@ def main():
                 time.sleep(3600)
                 continue
 
-            # ═══ HEARTBEAT ═══
-            if time.time() - last_heartbeat_time > 3600:
-                send_telegram(f"💓 <b>Bot Heartbeat</b>\nActive and scanning the market.\nDaily P&L: ${daily_pnl:+.2f}")
-                last_heartbeat_time = time.time()
 
             # ═══ KILL ZONE CHECK (skip fetching data if not in KZ) ═══
             # ═══ KILL ZONE CHECK ═══
