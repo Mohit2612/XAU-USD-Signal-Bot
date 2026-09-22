@@ -4,6 +4,8 @@ import requests
 import time
 import json
 import math
+import datetime
+import traceback
 from datetime import datetime, date, timedelta
 
 # Fix Windows console encoding for emojis
@@ -18,6 +20,7 @@ import pytz
 import xml.etree.ElementTree as ET
 import db
 import macro_analyzer
+import MetaTrader5 as mt5
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  🥇 XAU/USD ULTIMATE SIGNAL BOT — 2026 INSTITUTIONAL GRADE ║
 # ║                                                              ║
@@ -39,7 +42,22 @@ import macro_analyzer
 # ============================================
 TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "8831251788:AAEIMLBzD0LwdGC4vqyO7Z2SH5cUWcUTg6Y")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "953284393")
-TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "ddbd5f923b014d5a8d2514e7196f1f22")
+TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "3639e4c2a7214a788158e6fb2786a5a4")
+FINNHUB_API_KEY    = os.environ.get("FINNHUB_API_KEY", "dapc11pr01qqnrhqh0t0dapc11pr01qqnrhqh0tg")  # Put your Finnhub API key here if you have one
+
+# MT5 Configuration
+MT5_SYMBOL = "XAUUSD" # Change to "XAUUSD.m", "GOLD" etc if your broker uses a suffix
+MT5_ENABLED = True
+
+# ============================================
+# MT5 INITIALIZATION
+# ============================================
+if MT5_ENABLED:
+    if not mt5.initialize():
+        print(f"MT5 initialize() failed, error code = {mt5.last_error()}")
+        MT5_ENABLED = False
+    else:
+        print(f"✅ MT5 Initialized successfully. Primary data source: MT5 ({MT5_SYMBOL})")
 
 # ============================================
 # MULTI-ASSET CONFIGURATION REGISTRY
@@ -81,7 +99,7 @@ ASSETS = {
         "min_ote_move": 0.0020,
         "vwap_threshold": 0.0005,
         "wick_min": 0.0005,
-        "enabled": True,
+        "enabled": False,
     },
     "GBP/USD": {
         "type": "forex",
@@ -175,7 +193,7 @@ ASSETS = {
         "min_ote_move": 200.0,
         "vwap_threshold": 50.0,
         "wick_min": 50.0,
-        "enabled": True,
+        "enabled": False,
     },
     "ETH/USD": {
         "type": "crypto",
@@ -338,18 +356,78 @@ def send_telegram(message):
 # FETCH CANDLES (multi-asset)
 # ============================================
 def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
+    # --- 1. MT5 PRIMARY SOURCE ---
+    if MT5_ENABLED and symbol == "XAU/USD":
+        mt5_interval_map = {
+            "1m": mt5.TIMEFRAME_M1,
+            "5m": mt5.TIMEFRAME_M5,
+            "15m": mt5.TIMEFRAME_M15,
+            "1h": mt5.TIMEFRAME_H1
+        }
+        mt5_tf = mt5_interval_map.get(interval, mt5.TIMEFRAME_M5)
+        rates = mt5.copy_rates_from_pos(MT5_SYMBOL, mt5_tf, 0, 500)
+        
+        if rates is not None and len(rates) > 0:
+            candles = []
+            for r in reversed(rates): # Newest first to match bot logic
+                dt_str = datetime.fromtimestamp(r['time']).strftime('%Y-%m-%d %H:%M:%S')
+                candles.append({
+                    "datetime": dt_str,
+                    "open": float(r['open']),
+                    "high": float(r['high']),
+                    "low": float(r['low']),
+                    "close": float(r['close'])
+                })
+            return candles
+        else:
+            print(f"MT5 Error: Could not fetch data for {MT5_SYMBOL}. Falling back to TwelveData...")
+
+    # --- 2. TWELVEDATA FALLBACK ---
     # Map intervals to TwelveData format
     td_interval_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h"}
     td_interval = td_interval_map.get(interval, "5min")
     
-    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={td_interval}&outputsize=500&apikey={TWELVEDATA_API_KEY}"
+    # Use OANDA exchange specifically for XAU/USD (Gold Spot)
+    exchange_param = "&exchange=OANDA" if symbol == "XAU/USD" else ""
+    url = f"https://api.twelvedata.com/time_series?symbol={symbol}{exchange_param}&interval={td_interval}&outputsize=500&apikey={TWELVEDATA_API_KEY}"
     try:
         r = requests.get(url, timeout=15)
         data = r.json()
         
         if "values" not in data:
-            # Fallback to Yahoo if TwelveData limit reached
-            print(f"TwelveData Error for {symbol}: {data}. Falling back to Yahoo Finance...")
+            print(f"TwelveData Error for {symbol}: {data}. Falling back to alternative APIs...")
+            
+            # --- FINNHUB FALLBACK ---
+            if FINNHUB_API_KEY and symbol == "XAU/USD":
+                fh_interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60"}
+                fh_res = fh_interval_map.get(interval, "5")
+                end_ts = int(time.time())
+                start_ts = end_ts - (10 * 24 * 60 * 60) # 10 days
+                fh_url = f"https://finnhub.io/api/v1/forex/candle?symbol=OANDA:XAU_USD&resolution={fh_res}&from={start_ts}&to={end_ts}&token={FINNHUB_API_KEY}"
+                
+                print("Fetching from Finnhub...")
+                try:
+                    f_req = requests.get(fh_url, timeout=15)
+                    f_data = f_req.json()
+                    if f_data.get("s") == "ok":
+                        # Convert Finnhub format to match TwelveData format
+                        # Finnhub: t (time), o (open), h (high), l (low), c (close)
+                        candles = []
+                        for i in range(len(f_data['t'])):
+                            dt_str = datetime.fromtimestamp(f_data['t'][i]).strftime('%Y-%m-%d %H:%M:%S')
+                            candles.append({
+                                "datetime": dt_str,
+                                "open": str(f_data['o'][i]),
+                                "high": str(f_data['h'][i]),
+                                "low": str(f_data['l'][i]),
+                                "close": str(f_data['c'][i])
+                            })
+                        return candles[::-1]  # Reverse to match TwelveData (newest first)
+                except Exception as e:
+                    print(f"Finnhub Error: {e}")
+
+            # --- YAHOO FINANCE FALLBACK ---
+            print("Falling back to Yahoo Finance...")
             asset_config = ASSETS.get(symbol, {})
             yahoo_sym = asset_config.get("yahoo_symbol", "GC=F")
             y_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}?interval={interval}&range={range_str}"
@@ -403,7 +481,7 @@ def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
 
 def get_current_price(symbol="XAU/USD"):
     """Fetch latest price for trade monitoring."""
-    candles = get_candles(symbol=symbol, interval="1m", range_str="1d")
+    candles = get_candles(symbol=symbol, interval="5m", range_str="1d")
     if candles and len(candles) > 0:
         return candles[-1]["close"]
     return None
@@ -2225,8 +2303,7 @@ def main():
         f"  Max Trades/Day: {MAX_TRADES_PER_DAY}\n"
         f"  Auto-Trade: ✅ | Trailing SL: ✅ | Breakeven: ✅\n"
         f"  Daily Loss Limit: -{int(DAILY_LOSS_LIMIT_PCT*100)}%\n"
-        f"{rolling_text}\n\n"
-        f"Scanning {len(enabled_assets)} assets ⚔️"
+        f"{rolling_text}"
     )
 
     last_summary_date = None
@@ -2259,7 +2336,7 @@ def main():
                 active_count = len(active_trades)
                 send_telegram(
                     f"💓 <b>Bot Heartbeat</b>\n"
-                    f"Scanning {len(enabled_assets)} assets.\n"
+
                     f"Active trades: {active_count}\n"
                     f"Daily P&L: ${daily_pnl:+.2f}"
                 )
@@ -2287,8 +2364,8 @@ def main():
                 print(f"\n--- Scanning {asset_cfg['label']} ({symbol}) ---")
 
                 # ═══ FETCH CANDLES FOR THIS SYMBOL ═══
-                candles_1m = get_candles(symbol, "1m", "1d")
-                time.sleep(2)  # Rate limiting
+
+
                 candles_5m = get_candles(symbol, "5m", "5d")
                 time.sleep(2)
                 candles_15m = get_candles(symbol, "15m", "5d")
@@ -2296,7 +2373,7 @@ def main():
                 candles_1h = get_candles(symbol, "1h", "5d")
                 time.sleep(2)
 
-                if not candles_1m or not candles_5m or not candles_15m or not candles_1h:
+                if not candles_5m or not candles_15m or not candles_1h:
                     print(f"  Fetch failed for {symbol}. Skipping...")
                     continue
 
@@ -2344,7 +2421,7 @@ def main():
 
             # ═══ SLEEP UNTIL NEXT CYCLE ═══
             ts = time.time()
-            sleep_time = (60 - (ts % 60)) + 3  # Align to next minute
+            sleep_time = (300 - (ts % 300)) + 3  # Align to next 5 minutes to save API limits
             print(f"\nSleeping {int(sleep_time)}s until next cycle...")
             time.sleep(sleep_time)
 

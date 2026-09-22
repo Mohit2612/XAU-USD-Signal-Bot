@@ -29,6 +29,7 @@ import pytz
 TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "8831251788:AAEIMLBzD0LwdGC4vqyO7Z2SH5cUWcUTg6Y")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "953284393")
 TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "7299d19a5fa645a4ba5ac931ddf875a7")
+FINNHUB_API_KEY    = os.environ.get("FINNHUB_API_KEY", "")
 
 SYMBOL       = "XAU/USD"
 CAPITAL      = 20
@@ -182,8 +183,38 @@ def get_candles(interval="5m", range_str="5d"):
         data = r.json()
         
         if "values" not in data:
-            # Fallback to Yahoo if TwelveData limit reached
-            print(f"TwelveData Error: {data}. Falling back to Yahoo Finance...")
+            print(f"TwelveData Error for {SYMBOL}: {data}. Falling back to alternative APIs...")
+            
+            # --- FINNHUB FALLBACK ---
+            if FINNHUB_API_KEY and SYMBOL == "XAU/USD":
+                fh_interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60"}
+                fh_res = fh_interval_map.get(interval, "5")
+                end_ts = int(time.time())
+                start_ts = end_ts - (10 * 24 * 60 * 60) # 10 days
+                fh_url = f"https://finnhub.io/api/v1/forex/candle?symbol=OANDA:XAU_USD&resolution={fh_res}&from={start_ts}&to={end_ts}&token={FINNHUB_API_KEY}"
+                
+                print("Fetching from Finnhub...")
+                try:
+                    f_req = requests.get(fh_url, timeout=15)
+                    f_data = f_req.json()
+                    if f_data.get("s") == "ok":
+                        # Convert Finnhub format to match TwelveData format
+                        candles = []
+                        for i in range(len(f_data['t'])):
+                            dt_str = datetime.fromtimestamp(f_data['t'][i]).strftime('%Y-%m-%d %H:%M:%S')
+                            candles.append({
+                                "time": dt_str,
+                                "open": float(f_data['o'][i]),
+                                "high": float(f_data['h'][i]),
+                                "low": float(f_data['l'][i]),
+                                "close": float(f_data['c'][i])
+                            })
+                        return candles[::-1]  # Reverse to match TwelveData (newest first)
+                except Exception as e:
+                    print(f"Finnhub Error: {e}")
+
+            # --- YAHOO FINANCE FALLBACK ---
+            print("Falling back to Yahoo Finance...")
             y_url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={interval}&range={range_str}"
             yr = requests.get(y_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
             y_data = yr.json()
