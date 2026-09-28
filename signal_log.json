@@ -1,0 +1,26 @@
+[
+  {
+    "timestamp": "2026-09-28T19:16:44.053467+05:30",
+    "pair": "N/A",
+    "direction": "NO_TRADE",
+    "confidence": 0,
+    "entry_price": 0,
+    "sl_price": 0,
+    "tp_price": 0,
+    "was_blocked": true,
+    "block_reason": "KILL_SWITCH",
+    "message_length": 233
+  },
+  {
+    "timestamp": "2026-09-28T19:17:03.046575+05:30",
+    "pair": "N/A",
+    "direction": "NO_TRADE",
+    "confidence": 0,
+    "entry_price": 0,
+    "sl_price": 0,
+    "tp_price": 0,
+    "was_blocked": true,
+    "block_reason": "KILL_SWITCH",
+    "message_length": 233
+  }
+]
