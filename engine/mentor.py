@@ -58,7 +58,25 @@ MENTOR_LESSON_POOL = [
     "📚 <b>Aaj Ki Seekh:</b> Har trade ke pehle apne se pucho — 'Kya main ye trade bina FOMO ke le raha hoon?'",
     "📚 <b>Today's Lesson:</b> The market doesn't owe you anything. Protect your capital first, profits will follow.",
     "📚 <b>Aaj Ki Seekh:</b> Consecutive losses ke baad rest lo. Revenge trading sabse bada account killer hai.",
+    "📚 <b>Aaj Ki Seekh (USD/INR):</b> USD/INR ek managed-float pair hai. RBI volatility ko smooth karne ke liye intervene karta hai, isliye breakouts jaldi fade ho sakte hain. SL discipline zaruri hai!",
+    "📚 <b>Today's Lesson (USD/INR):</b> India imports ~85% of its crude oil. When Crude Oil prices rise, India's import bill increases, putting upward pressure on USD/INR.",
+    "📚 <b>Aaj Ki Seekh (USD/INR):</b> DXY (US Dollar Index) aur FII flows USD/INR ke major drivers hain. FII equity selloff se USD/INR me buying pressure aata hai.",
+    "📚 <b>Today's Lesson (EUR/INR):</b> EUR/INR is slightly less liquid than USD/INR on NSE. Always factor in wider spreads and use a buffer for stop-losses.",
+    "📚 <b>Aaj Ki Seekh (EUR/INR):</b> ECB (European Central Bank) rate decisions aur EUR/USD trend EUR/INR ko directly impact karte hain.",
+    "📚 <b>Today's Lesson (Spot vs Futures):</b> Levels are based on spot data feeds, while trading occurs on NSE futures. Futures may trade at a small premium/discount to spot — trade only via SEBI-registered brokers on NSE/BSE!",
 ]
+
+PAIR_LESSONS = {
+    "USD/INR": [
+        "📚 <b>Mentor Lesson (USD/INR):</b> USD/INR is a managed-float pair. RBI frequently smooths sharp moves, so breakouts can fade quickly. Maintain strict Stop Loss discipline!",
+        "📚 <b>Mentor Lesson (USD/INR):</b> India imports ~85% of its crude oil. Spikes in crude oil increase India's import bill, adding upward pressure on USD/INR.",
+        "📚 <b>Mentor Lesson (USD/INR):</b> Keep an eye on DXY (Dollar Index) and FII equity flows — FII selling in Indian equities typically drives USD/INR higher.",
+    ],
+    "EUR/INR": [
+        "📚 <b>Mentor Lesson (EUR/INR):</b> EUR/INR is less liquid than USD/INR on NSE. Always account for wider spreads and use wider SL buffers.",
+        "📚 <b>Mentor Lesson (EUR/INR):</b> ECB monetary policy decisions and Eurozone CPI heavily drive EUR/INR momentum alongside global EUR/USD trends.",
+    ],
+}
 
 
 # ============================================
@@ -67,36 +85,45 @@ MENTOR_LESSON_POOL = [
 def format_mentor_signal(signal, language="hinglish", beginner_mode=False):
     """
     Format a signal into the 6-part mentor teaching structure.
-
-    Parts:
-      1. SETUP — What the chart is showing
-      2. WHY — Why this trade makes sense (confluences)
-      3. RISK — SL/TP/Lots with risk calculation
-      4. LEVELS — Key S/R, OB, FVG levels
-      5. LESSON — Educational takeaway
-      6. DISCLOSURE — AI disclaimer
     """
-    if signal is None:
-        return _format_no_trade(language)
+    if signal is None or signal.get("signal") == "NO_TRADE":
+        return _format_no_trade(language, signal)
 
     pair = signal.get("pair", "XAU/USD")
     direction = "🟢 LONG (BUY)" if signal["signal"] == "LONG" else "🔴 SHORT (SELL)"
     emoji = "📈" if signal["signal"] == "LONG" else "📉"
 
-    # Pick a mentor intro
     intro = random.choice(MENTOR_INTROS)
-
     now_ist = datetime.now(IST).strftime('%d %b %Y %H:%M IST')
+
+    import data_layer as dl
+    asset_cfg = dl.ASSETS.get(pair, {})
+    contract_info = asset_cfg.get("active_futures_contract", "Spot / Futures")
+    disclaimer_note = asset_cfg.get("disclaimer", "")
+
+    lot_mode = signal.get("lot_mode", "paper_fractional")
+    risk_pct = signal.get("risk_pct", 1.0)
+    risk_inr = signal.get("actual_risk_inr", 0.0)
+    risk_usd = signal.get("actual_risk_usd", 0.0)
+    lots_val = signal.get("lots", 0.01)
+
+    if lot_mode == "exchange":
+        lots_line = f"📦 <b>Lots:</b> {int(lots_val)} | <b>Risk:</b> ₹{risk_inr:,.2f} ({risk_pct}%)"
+        mode_header = "🏛 <b>REAL EXCHANGE MODE (NSE)</b>\n"
+    else:
+        lots_line = f"📦 <b>Lots:</b> {lots_val:.2f} (paper) | <b>Risk:</b> ${risk_usd:,.2f} ({risk_pct}%)"
+        mode_header = "🧪 <b>PAPER / SIMULATION</b>\n"
 
     # ─── PART 1: SETUP ───
     session_label = signal.get("session", {}).get("label", "Market Hours")
     macro_pred = signal.get("macro", {}).get("prediction", "N/A")
 
-    setup = f"""🎯 <b>{pair} MENTOR SIGNAL</b> {emoji}
+    setup = f"""{mode_header}🎯 <b>{pair} MENTOR SIGNAL</b> {emoji}
 ━━━━━━━━━━━━━━━━━━━━
 💬 <i>{intro}</i>
 
 📊 <b>Direction:</b> {direction}
+📜 <b>Contract:</b> {contract_info}
 🕐 <b>Session:</b> {session_label}
 🔮 <b>Macro View:</b> {macro_pred}"""
 
@@ -112,14 +139,20 @@ def format_mentor_signal(signal, language="hinglish", beginner_mode=False):
         why_section += _beginner_explain(signal)
 
     # ─── PART 3: RISK ───
+    prec = asset_cfg.get("price_decimals", 2)
+    margin_note = signal.get("margin_note", "Broker se margin requirement confirm karein")
+
     risk_section = f"""
 ━━━━━━━━━━━━━━━━━━━━
-💰 <b>Entry:</b> {signal['entry_price']:.2f}
-🛑 <b>Stop Loss:</b> {signal['sl_price']:.2f} (${signal['sl_distance']:.2f} away)
-🎯 <b>Take Profit:</b> {signal['tp_price']:.2f} (${signal['tp_distance']:.2f} away)
-📦 <b>Lots:</b> {signal['lots']}
+💰 <b>Entry:</b> {signal['entry_price']:.{prec}f}
+🛑 <b>Stop Loss:</b> {signal['sl_price']:.{prec}f} ({signal['sl_distance']:.{prec}f} away)
+🎯 <b>Take Profit:</b> {signal['tp_price']:.{prec}f} ({signal['tp_distance']:.{prec}f} away)
+{lots_line}
 ⚖️ <b>R:R:</b> 1:{signal['rr_ratio']}
-💵 <b>Max Risk:</b> ~${signal['actual_risk']:.2f}"""
+📌 <i>{margin_note}</i>"""
+
+    if disclaimer_note:
+        risk_section += f"\n📌 <i>{disclaimer_note}</i>"
 
     # ─── PART 4: LEVELS ───
     levels = ""
@@ -155,10 +188,42 @@ def format_mentor_signal(signal, language="hinglish", beginner_mode=False):
     return setup + why_section + risk_section + levels_section + lesson_section + footer + disclaimer
 
 
-def _format_no_trade(language="hinglish"):
+def _format_no_trade(language="hinglish", signal=None):
     """When the engine says 'no trade' — that's valid and we explain why."""
     intro = random.choice(MENTOR_INTROS)
     now_ist = datetime.now(IST).strftime('%d %b %Y %H:%M IST')
+
+    if signal and signal.get("reason_code") == "ZERO_LOTS":
+        min_cap = signal.get("min_capital_needed", 0.0)
+        sym = signal.get("currency_symbol", "₹")
+        margin_note = signal.get("margin_note", "Broker se margin requirement confirm karein")
+        risk_pct = signal.get("risk_pct", 1.0)
+
+        if language == "hinglish":
+            msg = f"""🔍 <b>MARKET SCAN COMPLETE — NO TRADE</b>
+
+💬 <i>Capital kam hai is setup ke liye, skip kar rahe hain.</i>
+
+🚫 <b>Sabak:</b> Risk management ke mutabiq exchange mode me 1 whole lot le lene ke liye aapka capital kam hai.
+💰 <b>Minimum Capital Needed for 1 Lot:</b> {sym}{min_cap:,.2f} (at {risk_pct}% risk)
+📌 <i>{margin_note}</i>
+
+Patient raho. Capital protect karna pehli priority hai!
+
+🕐 {now_ist}"""
+        else:
+            msg = f"""🔍 <b>MARKET SCAN COMPLETE — NO TRADE</b>
+
+💬 <i>Capital is too low for this setup, skipping.</i>
+
+🚫 <b>Lesson:</b> Your capital is insufficient to trade 1 whole lot safely in exchange mode.
+💰 <b>Minimum Capital Required for 1 Lot:</b> {sym}{min_cap:,.2f} (at {risk_pct}% risk)
+📌 <i>{margin_note}</i>
+
+Be patient. Protecting your capital is priority #1!
+
+🕐 {now_ist}"""
+        return msg + (AI_DISCLAIMER_HINDI if language == "hinglish" else AI_DISCLAIMER)
 
     if language == "hinglish":
         msg = f"""🔍 <b>MARKET SCAN COMPLETE — NO TRADE</b>

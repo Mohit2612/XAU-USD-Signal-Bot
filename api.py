@@ -59,6 +59,14 @@ def get_trades():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/pairs")
+def get_pairs():
+    try:
+        import data_layer as dl
+        return dl.ASSETS
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Mount React App if built
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 

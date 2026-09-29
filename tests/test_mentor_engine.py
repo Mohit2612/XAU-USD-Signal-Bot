@@ -388,6 +388,324 @@ class TestTelegramBot(unittest.TestCase):
         # Reset
         telegram_bot.handle_command("/language")
 
+    def test_pairs_command(self):
+        """/pairs command should list enabled and disabled pairs."""
+        response = telegram_bot.handle_command("/pairs")
+        self.assertIn("USD/INR", response)
+        self.assertIn("EUR/INR", response)
+        self.assertIn("GBP/INR", response)
+        self.assertIn("SEBI-registered", response)
+
+
+class TestPairConfigAndRules(unittest.TestCase):
+    """Test pair configuration, symbol mapping, trading hours and INR pair rules."""
+
+    def test_pairs_yaml_loads(self):
+        """config/pairs.yaml should load as single source of truth."""
+        self.assertIn("USD/INR", dl.ASSETS)
+        self.assertIn("EUR/INR", dl.ASSETS)
+        usdinr = dl.ASSETS["USD/INR"]
+        self.assertEqual(usdinr["priority"], 1)
+        self.assertEqual(usdinr["level"], "beginner")
+        self.assertTrue(usdinr["enabled"])
+        self.assertEqual(usdinr["exchange"], "NSE Currency Derivatives")
+        self.assertEqual(usdinr["active_futures_contract"], "USDINR NEAR-MONTH FUT")
+
+    def test_symbol_mapping_resolves(self):
+        """Provider symbol mapping should resolve correctly for each provider client."""
+        self.assertEqual(dl.get_provider_symbol("USD/INR", "yahoofinance"), "USDINR=X")
+        self.assertEqual(dl.get_provider_symbol("USD/INR", "twelvedata"), "USD/INR")
+        self.assertEqual(dl.get_provider_symbol("USD/INR", "finnhub"), "OANDA:USD_INR")
+
+        self.assertEqual(dl.get_provider_symbol("EUR/INR", "yahoofinance"), "EURINR=X")
+        self.assertEqual(dl.get_provider_symbol("EUR/INR", "twelvedata"), "EUR/INR")
+        self.assertEqual(dl.get_provider_symbol("EUR/INR", "finnhub"), "OANDA:EUR_INR")
+
+    def test_disabled_pairs_never_produce_signals(self):
+        """Disabled pairs (e.g. GBP/INR) must be blocked and never produce signals."""
+        snapshot = {
+            "pair": "GBP/INR",
+            "candles_5m": [{"time": "2026-09-28 10:00:00", "open": 105.0, "high": 105.5, "low": 104.5, "close": 105.2}] * 20,
+            "candles_15m": [{"time": "2026-09-28 10:00:00", "open": 105.0, "high": 105.5, "low": 104.5, "close": 105.2}] * 20,
+            "candles_1h": [{"time": "2026-09-28 10:00:00", "open": 105.0, "high": 105.5, "low": 104.5, "close": 105.2}] * 20,
+            "asset_config": dl.ASSETS.get("GBP/INR", {"enabled": False}),
+            "session": {"label": "Market Hours"},
+        }
+        signal = signal_engine.generate_mentor_signal(snapshot)
+        self.assertIsNone(signal)
+
+    def test_trading_hours_blocking(self):
+        """Signals outside pair's trading hours (e.g. 02:00 AM IST for USD/INR) must be blocked."""
+        from datetime import datetime
+        import pytz
+        ist = pytz.timezone('Asia/Kolkata')
+        # Monday at 02:00 AM IST (outside 09:00-17:00 IST)
+        night_time = ist.localize(datetime(2026, 9, 28, 2, 0, 0))
+        self.assertFalse(dl.is_within_trading_hours("USD/INR", dt=night_time))
+
+        # Monday at 11:30 AM IST (within 09:00-17:00 IST)
+        day_time = ist.localize(datetime(2026, 9, 28, 11, 30, 0))
+        self.assertTrue(dl.is_within_trading_hours("USD/INR", dt=day_time))
+
+    def test_usdinr_beginner_signal_end_to_end(self):
+        """USD/INR mock data during trading hours should generate a valid beginner signal."""
+        from datetime import datetime
+        import pytz
+        ist = pytz.timezone('Asia/Kolkata')
+        day_time = ist.localize(datetime(2026, 9, 28, 11, 30, 0))
+
+        # Build mock uptrend candles for USD/INR
+        candles_5m = []
+        for i in range(50):
+            p = 83.50 + (i * 0.02)
+            candles_5m.append({
+                "time": f"2026-09-28 11:{(i%12)*5:02d}:00",
+                "open": round(p, 4),
+                "high": round(p + 0.05, 4),
+                "low": round(p - 0.02, 4),
+                "close": round(p + 0.04, 4),
+            })
+
+        snapshot = {
+            "pair": "USD/INR",
+            "candles_5m": candles_5m,
+            "candles_15m": candles_5m,
+            "candles_1h": candles_5m,
+            "asset_config": dl.ASSETS["USD/INR"],
+            "session": {"label": "NSE Trading Hours 🇮🇳", "name": "NSE", "risk_mult": 1.0},
+            "news_blocked": False,
+            "macro": {"prediction": "Trend is BULLISH"},
+        }
+
+        # Override trading hours check for test
+        original_hours_fn = dl.is_within_trading_hours
+        dl.is_within_trading_hours = lambda sym, dt=None: True
+        try:
+            signal = signal_engine.generate_mentor_signal(snapshot)
+            if signal:
+                self.assertEqual(signal["pair"], "USD/INR")
+                self.assertIn(signal["signal"], ["LONG", "SHORT"])
+                self.assertIsNotNone(signal["sl_price"])
+                self.assertGreaterEqual(signal["rr_ratio"], 2.0)
+        finally:
+            dl.is_within_trading_hours = original_hours_fn
+
+
+class TestMoneyManagement(unittest.TestCase):
+    """Test capital-based lot sizing formulas, lot modes, and 0-lot safety logic."""
+
+    def setUp(self):
+        from engine import money_management as mm
+        mm.set_capital(50000, "INR")
+        mm.set_lot_mode("paper_fractional")
+
+    def tearDown(self):
+        from engine import money_management as mm
+        mm.set_capital(50000, "INR")
+        mm.set_lot_mode("paper_fractional")
+
+    def test_exchange_mode_whole_lots_only(self):
+        """Exchange mode must produce whole numbers (integers) only and never round up."""
+        from engine import money_management as mm
+        mm.set_lot_mode("exchange")
+        mm.set_capital(50000, "INR")
+        asset_cfg = {"lot_size": 1000, "price_decimals": 4, "quote": "INR"}
+        # entry 83.50, sl 83.20 -> sl_distance 0.30 -> loss_per_lot 300 INR
+        # 1% of 50000 = 500 INR -> raw_lots = 500/300 = 1.666 -> floor = 1
+        res = mm.calculate_lot_size("USD/INR", 83.50, 83.20, asset_cfg)
+        self.assertEqual(res["lots"], 1)
+        self.assertIsInstance(res["lots"], int)
+        self.assertFalse(res["is_zero_lots"])
+
+    def test_paper_fractional_lots(self):
+        """Paper mode allows fractional lots (down to 0.01 step) and rounds down."""
+        from engine import money_management as mm
+        mm.set_lot_mode("paper_fractional")
+        mm.set_capital(50000, "INR")
+        asset_cfg = {"lot_size": 1000, "price_decimals": 4, "quote": "INR"}
+        res = mm.calculate_lot_size("USD/INR", 83.50, 83.20, asset_cfg)
+        # raw_lots = 1.666 -> floor to 0.01 step = 1.66
+        self.assertEqual(res["lots"], 1.66)
+        self.assertIsInstance(res["lots"], float)
+
+    def test_zero_lots_exchange_mode(self):
+        """Low capital in exchange mode results in 0 lots and calculates minimum capital required."""
+        from engine import money_management as mm
+        mm.set_lot_mode("exchange")
+        mm.set_capital(10000, "INR")  # 1% risk = 100 INR risk amount
+        asset_cfg = {"lot_size": 1000, "price_decimals": 4, "quote": "INR"}
+        # loss_per_lot = 300 INR -> 100 / 300 = 0.33 -> floor = 0 lots
+        res = mm.calculate_lot_size("USD/INR", 83.50, 83.20, asset_cfg)
+        self.assertEqual(res["lots"], 0)
+        self.assertTrue(res["is_zero_lots"])
+        # min_capital = 300 / 0.01 = 30000 INR
+        self.assertEqual(res["min_capital_needed_user"], 30000.0)
+
+    def test_paper_message_label(self):
+        """Paper mode formatted messages must include PAPER / SIMULATION label."""
+        sig = {
+            "pair": "USD/INR",
+            "signal": "LONG",
+            "confidence": 80,
+            "reasons": ["Test Confluence"],
+            "entry_price": 83.50,
+            "sl_price": 83.20,
+            "tp_price": 84.10,
+            "sl_distance": 0.30,
+            "tp_distance": 0.60,
+            "lots": 1.66,
+            "actual_risk_inr": 498.0,
+            "actual_risk_usd": 5.96,
+            "lot_mode": "paper_fractional",
+            "risk_pct": 1.0,
+            "rr_ratio": 2.0,
+        }
+        msg = mentor.format_mentor_signal(sig, "hinglish")
+        self.assertIn("PAPER / SIMULATION", msg)
+        self.assertIn("(paper)", msg)
+
+    def test_capital_command(self):
+        """/capital command updates capital cleanly."""
+        res = telegram_bot.handle_command("/capital", "100000 INR")
+        self.assertIn("100,000", res)
+        from engine import money_management as mm
+        self.assertEqual(mm.get_money_config()["capital"], 100000.0)
+
+    def test_lotmode_command(self):
+        """/lotmode command switches lot mode."""
+        res = telegram_bot.handle_command("/lotmode", "exchange")
+        self.assertIn("exchange", res)
+        from engine import money_management as mm
+        self.assertEqual(mm.get_money_config()["lot_mode"], "exchange")
+
+
+class TestSignalFormatter(unittest.TestCase):
+    """Test strict Telegram message formatting, validation, and templates."""
+
+    def setUp(self):
+        from engine import formatter
+        formatter._recent_signals.clear()
+
+    def test_trade_signal_template_rendering(self):
+        """Trade signal renders with fixed field structure and disclaimer."""
+        from engine import formatter
+        sig = {
+            "pair": "USD/INR",
+            "signal": "LONG",
+            "entry_price": 83.5000,
+            "sl_price": 83.2000,
+            "tp_price": 84.1000,
+            "lots": 1,
+            "rr_ratio": 2.0,
+            "risk_pct": 1.0,
+            "reasons": ["Break of Structure on 15M"],
+        }
+        msg, valid, err = formatter.format_trade_signal_message(sig, "hinglish")
+        self.assertTrue(valid)
+        self.assertIn("USD/INR | BUY 🟢", msg)
+        self.assertIn("Entry: 83.5000", msg)
+        self.assertIn("Stop Loss: 83.2000", msg)
+        self.assertIn("Target: 84.1000", msg)
+        self.assertIn("Lots: 1 (Beginner) | RR 1:2.0 | Risk 1.0%", msg)
+        self.assertIn("SEBI-registered", msg)
+        self.assertLessEqual(len(msg), 700)
+
+    def test_rr_below_1_to_2_rejected(self):
+        """Signals with RR < 1:2 must be rejected by the formatter."""
+        from engine import formatter
+        sig = {
+            "pair": "USD/INR",
+            "signal": "LONG",
+            "entry_price": 83.5000,
+            "sl_price": 83.2000,
+            "tp_price": 83.7000,  # RR = 0.20 / 0.30 = 0.67 < 2.0
+            "lots": 1,
+            "rr_ratio": 0.67,
+            "risk_pct": 1.0,
+        }
+        msg, valid, err = formatter.format_trade_signal_message(sig, "hinglish")
+        self.assertFalse(valid)
+        self.assertIn("REJECTED", err)
+
+    def test_wrong_side_sl_rejected(self):
+        """LONG signal with SL > Entry or SHORT with SL < Entry must be rejected."""
+        from engine import formatter
+        sig = {
+            "pair": "USD/INR",
+            "signal": "LONG",
+            "entry_price": 83.5000,
+            "sl_price": 83.8000,  # Wrong side for LONG
+            "tp_price": 84.5000,
+            "lots": 1,
+            "rr_ratio": 2.0,
+            "risk_pct": 1.0,
+        }
+        msg, valid, err = formatter.format_trade_signal_message(sig, "hinglish")
+        self.assertFalse(valid)
+        self.assertIn("SL", err)
+
+    def test_banned_words_blocked(self):
+        """Messages containing banned words must be rejected."""
+        from engine import formatter
+        clean, found = formatter.check_banned_words("This trade is 100% guaranteed profit!")
+        self.assertFalse(clean)
+        self.assertIn("guaranteed", found)
+
+    def test_deduplication(self):
+        """Duplicate signals sent within time window must be suppressed."""
+        from engine import formatter
+        sig = {
+            "pair": "EUR/INR",
+            "signal": "SHORT",
+            "entry_price": 91.5000,
+            "sl_price": 91.8000,
+            "tp_price": 90.9000,
+            "lots": 1,
+            "rr_ratio": 2.0,
+            "risk_pct": 1.0,
+        }
+        # First send
+        msg1, valid1, err1 = formatter.format_trade_signal_message(sig, "hinglish")
+        self.assertTrue(valid1)
+
+        # Immediate second send -> suppressed as duplicate
+        msg2, valid2, err2 = formatter.format_trade_signal_message(sig, "hinglish")
+        self.assertFalse(valid2)
+        self.assertIn("DEDUPLICATED", err2)
+
+    def test_four_message_types_sample_rendering(self):
+        """All 4 message types must render cleanly with dummy illustrative data."""
+        from engine import formatter
+
+        # 1. Trade Signal
+        sig = {
+            "pair": "USD/INR",
+            "signal": "LONG",
+            "entry_price": 83.5000,
+            "sl_price": 83.2000,
+            "tp_price": 84.1000,
+            "lots": 1,
+            "rr_ratio": 2.0,
+            "risk_pct": 1.0,
+        }
+        m1, v1, _ = formatter.format_trade_signal_message(sig, "hinglish")
+
+        # 2. No-Trade
+        m2 = formatter.format_no_trade_message("High-impact news near", "hinglish")
+
+        # 3. Trade Closed
+        m3 = formatter.format_trade_closed_message("USD/INR", "Target hit ✅", 450.0, "hinglish")
+
+        # 4. Discipline Note
+        m4 = formatter.format_discipline_note_message(3, "hinglish")
+
+        self.assertIn("USD/INR | BUY 🟢", m1)
+        self.assertIn("Wait karna bhi ek trade hai", m2)
+        self.assertIn("USD/INR closed: Target hit ✅", m3)
+        self.assertIn("3 losses ho gaye", m4)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+

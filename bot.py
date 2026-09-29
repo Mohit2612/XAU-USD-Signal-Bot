@@ -51,34 +51,7 @@ def main():
     # ── START TELEGRAM POLLING ──
     telegram_bot.start_polling_thread()
 
-    # ── SEND STARTUP MESSAGE ──
-    lang = telegram_bot.get_language()
-    assets_text = "\n".join([f"  • {dl.ASSETS[sym]['label']}" for sym in enabled_assets])
-    startup_msg = (
-        f"🚀 <b>MENTOR SIGNAL BOT v4.0 LIVE</b>\n\n"
-        f"🧪 PAPER TRADING MODE\n\n"
-        f"<b>📊 Active Assets:</b>\n{assets_text}\n\n"
-        f"<b>🧠 Mentor Engine:</b>\n"
-        f"  • Multi-Strategy Confluence\n"
-        f"  • AI + 20yr Veteran Trader Voice\n"
-        f"  • Mandatory SL on every signal\n"
-        f"  • News/Macro filtering\n"
-        f"  • Safety validation layer\n\n"
-        f"<b>📱 Commands:</b>\n"
-        f"  /ask [question] — Learn any concept\n"
-        f"  /status — Current bot status\n"
-        f"  /beginner — Toggle beginner mode\n"
-        f"  /language — Switch Hinglish/English\n\n"
-        f"💵 Starting Capital: $500\n"
-    )
-    # Safety check on startup message
-    startup_msg, _, _ = safety.validate_and_sanitize(None, startup_msg, lang)
-    telegram_bot.send_message(startup_msg)
-
-    # ── SEND DAILY MENTOR NOTE ──
-    daily_note = mentor.format_daily_mentor_note(lang)
-    daily_note, _, _ = safety.validate_and_sanitize(None, daily_note, lang)
-    telegram_bot.send_message(daily_note)
+    print("📱 Telegram Bot listening for commands...")
 
     last_mentor_note_date = date.today()
 
@@ -92,24 +65,10 @@ def main():
             is_new_day = paper_trading.check_daily_reset()
             if is_new_day:
                 print(f"\n📅 New day: {today}")
-                telegram_bot.send_message(
-                    f"📅 <b>New Day: {today}</b>\n"
-                    f"Signals remaining: {paper_trading.MAX_TRADES_PER_DAY}"
-                )
-
-                # Daily mentor note (once per day)
-                if last_mentor_note_date != today:
-                    lang = telegram_bot.get_language()
-                    note = mentor.format_daily_mentor_note(lang)
-                    note, _, _ = safety.validate_and_sanitize(None, note, lang)
-                    telegram_bot.send_message(note)
-                    last_mentor_note_date = today
 
             # ═══ KILL SWITCH CHECK ═══
             if safety.is_kill_switch_active():
                 print("🔴 Kill switch active. Scanning only, no signals.")
-                msg = safety.kill_switch_message()
-                # Don't send every cycle, just once
                 time.sleep(300)
                 continue
 
@@ -120,36 +79,22 @@ def main():
                 if current_price:
                     result = paper_trading.monitor_trade(symbol, current_price)
                     if result:
-                        # Trade closed — send notification
+                        # Trade closed — send structured format C notification
                         pnl = result.get("pnl", 0)
                         reason = result.get("reason", "UNKNOWN")
-                        pnl_emoji = "💰" if pnl > 0 else "💸"
-                        direction = "LONG (BUY)" if result["signal"] == "LONG" else "SHORT (SELL)"
-
-                        close_msg = (
-                            f"{'🎯✅' if reason == 'TP_HIT' else '🛑❌' if reason == 'SL_HIT' else '⏰'} "
-                            f"<b>TRADE CLOSED — {reason}</b>\n\n"
-                            f"📊 <b>{symbol} — {direction}</b>\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"💰 Entry: {result['entry']}\n"
-                            f"📍 Exit: {result['exit']}\n"
-                            f"{pnl_emoji} <b>P&L: ${pnl:+.2f}</b>\n"
-                            f"💵 Balance: ${paper_trading.get_virtual_balance():.2f}\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"⏱ Duration: {result.get('duration', 'N/A')}\n"
-                        )
+                        outcome_status = "Target hit ✅" if reason == 'TP_HIT' else "SL hit ❌" if reason == 'SL_HIT' else "Closed manually ➖"
 
                         lang = telegram_bot.get_language()
+                        from engine import formatter
+                        close_msg = formatter.format_trade_closed_message(symbol, outcome_status, pnl, lang)
                         close_msg, _, _ = safety.validate_and_sanitize(None, close_msg, lang)
                         telegram_bot.send_message(close_msg)
 
-                        # Loss coaching
-                        if pnl <= 0:
-                            consec = pt_state["consecutive_losses"]
-                            daily = pt_state["daily_pnl"]
-                            coaching = mentor.format_loss_coaching(consec, daily, lang)
-                            coaching, _, _ = safety.validate_and_sanitize(None, coaching, lang)
-                            telegram_bot.send_message(coaching)
+                        # Loss coaching / Discipline note if daily limit reached
+                        if pt_state["consecutive_losses"] >= 3:
+                            disc_msg = formatter.format_discipline_note_message(pt_state["consecutive_losses"], lang)
+                            disc_msg, _, _ = safety.validate_and_sanitize(None, disc_msg, lang)
+                            telegram_bot.send_message(disc_msg)
 
                         print(f"📊 {symbol} closed: {reason} | P&L: ${pnl:+.2f}")
 
@@ -188,6 +133,13 @@ def main():
                 signal = signal_engine.generate_mentor_signal(snapshot)
 
                 if signal:
+                    lang = telegram_bot.get_language()
+
+                    # Do not spam NO_TRADE messages to Telegram
+                    if signal.get("signal") == "NO_TRADE":
+                        print(f"  ❌ No-Trade setup: {signal.get('reason_code')} - skipping Telegram message.")
+                        continue
+
                     # Check cooldown
                     if not paper_trading.check_cooldown(symbol, signal["signal"]):
                         print(f"  Same direction cooldown for {symbol} — skipping.")
@@ -199,10 +151,14 @@ def main():
                         print(f"  ❌ {sl_error}")
                         continue
 
-                    # ═══ FORMAT WITH MENTOR VOICE ═══
-                    lang = telegram_bot.get_language()
-                    beginner = telegram_bot.is_beginner_mode()
-                    message = mentor.format_mentor_signal(signal, lang, beginner)
+                    # ═══ FORMAT WITH STRICT TEMPLATE ═══
+                    from engine import formatter
+                    message, is_valid, err = formatter.format_trade_signal_message(
+                        signal, language=lang, level_label="Beginner"
+                    )
+                    if not is_valid:
+                        print(f"  ❌ Formatter rejected signal: {err}")
+                        continue
 
                     # ═══ FULL SAFETY PIPELINE ═══
                     final_msg, allowed, block_reason = safety.validate_and_sanitize(
@@ -213,20 +169,20 @@ def main():
                         print(f"  🚫 Signal blocked: {block_reason}")
                         continue
 
-                    # ═══ SEND SIGNAL ═══
-                    telegram_bot.send_message(final_msg)
+                    # ═══ SEND TRADE SIGNAL WITH INLINE BUTTONS ═══
+                    telegram_bot.send_message(final_msg, with_buttons=True)
 
                     # ═══ OPEN PAPER TRADE ═══
                     paper_trading.open_trade(signal)
 
-                    print(f"  ✅ Signal: {signal['signal']} @ {signal['entry_price']} | "
+                    print(f"  ✅ Signal sent to Telegram: {signal['signal']} @ {signal['entry_price']} | "
                           f"Conf: {signal['confidence']}% | Risk: ${signal['actual_risk']:.2f}")
 
                     if pt_state["trades_today"] >= paper_trading.MAX_TRADES_PER_DAY:
-                        telegram_bot.send_message(
-                            f"🔴 <b>Daily Limit Reached</b>\n"
-                            f"{paper_trading.MAX_TRADES_PER_DAY} signals sent. Resuming tomorrow."
-                        )
+                        from engine import formatter
+                        disc_msg = formatter.format_discipline_note_message(pt_state.get("consecutive_losses", 0), lang)
+                        disc_msg, _, _ = safety.validate_and_sanitize(None, disc_msg, lang)
+                        telegram_bot.send_message(disc_msg)
                         break
                 else:
                     print(f"  No signal for {symbol}.")

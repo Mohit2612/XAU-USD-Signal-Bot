@@ -37,35 +37,70 @@ def is_beginner_mode():
     return _user_prefs["beginner_mode"]
 
 
-def send_message(text, chat_id=None):
-    """Send a message to Telegram."""
-    if not TELEGRAM_TOKEN:
-        print("Telegram not configured; skipping send.")
+def get_telegram_token():
+    return TELEGRAM_TOKEN or os.environ.get("TELEGRAM_TOKEN", "") or getattr(dl, "TELEGRAM_TOKEN", "")
+
+
+def get_telegram_chat_id():
+    return TELEGRAM_CHAT_ID or os.environ.get("TELEGRAM_CHAT_ID", "") or getattr(dl, "TELEGRAM_CHAT_ID", "")
+
+
+def send_message(text, chat_id=None, with_buttons=False):
+    """
+    Send a message to Telegram with optional inline buttons, dynamic token resolution, and retries.
+    """
+    token = get_telegram_token()
+    target = chat_id or get_telegram_chat_id()
+
+    if not token:
+        print("Telegram token missing; skipping send.")
         return
-    target = chat_id or TELEGRAM_CHAT_ID
     if not target:
+        print("Telegram chat_id missing; skipping send.")
         return
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    reply_markup = None
+    if with_buttons:
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {"text": "📝 Practice on paper", "callback_data": "paper_practice"},
+                    {"text": "📚 Learn more", "callback_data": "learn_more"}
+                ]
+            ]
+        }
 
     # Telegram has a 4096 char limit per message
-    if len(text) > 4000:
-        # Split into parts
-        parts = [text[i:i+4000] for i in range(0, len(text), 4000)]
-        for part in parts:
-            payload = {"chat_id": target, "text": part, "parse_mode": "HTML"}
+    text_chunks = [text[i:i+4000] for i in range(0, len(text), 4000)] if len(text) > 4000 else [text]
+
+    for chunk in text_chunks:
+        payload = {"chat_id": target, "text": chunk, "parse_mode": "HTML"}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
+        sent = False
+        for attempt in range(1, 4):
             try:
-                r = requests.post(url, json=payload, timeout=10)
-                print(f"Telegram: {r.status_code}")
+                r = requests.post(url, json=payload, timeout=15)
+                if r.status_code == 200:
+                    print(f"Telegram Delivery OK (200) -> chat {target}")
+                    sent = True
+                    break
+                else:
+                    # Fallback to plain text if HTML parsing failed
+                    payload.pop("parse_mode", None)
+                    r_fallback = requests.post(url, json=payload, timeout=15)
+                    print(f"Telegram Fallback: {r_fallback.status_code} (attempt {attempt})")
+                    if r_fallback.status_code == 200:
+                        sent = True
+                        break
             except Exception as e:
-                print(f"Telegram error: {e}")
-    else:
-        payload = {"chat_id": target, "text": text, "parse_mode": "HTML"}
-        try:
-            r = requests.post(url, json=payload, timeout=10)
-            print(f"Telegram: {r.status_code}")
-        except Exception as e:
-            print(f"Telegram error: {e}")
+                print(f"Telegram attempt {attempt} failed: {e}")
+                time.sleep(2)
+        if not sent:
+            print(f"❌ Failed to deliver message to Telegram chat {target} after 3 attempts.")
 
 
 # ============================================
@@ -197,14 +232,51 @@ def handle_command(command, args=""):
             "🎯 <b>Welcome to Mentor Signal Bot!</b>\n\n"
             "Main tumhara trading mentor hoon — 20+ saal ka experience, "
             "AI ki power ke saath.\n\n"
+            "💡 <b>Educational Note:</b> NSE me 1 lot = 1000 USD; fractional lots (0.01) sirf simulation mode me hain.\n\n"
             "<b>Commands:</b>\n"
             "• /ask [question] — Koi bhi trading concept pucho\n"
             "• /status — Current bot status\n"
+            "• /pairs — Enabled pairs and contract specifications\n"
+            "• /capital [amount] [INR|USD] — Set trading capital\n"
+            "• /lotmode [exchange|paper_fractional] — Switch lot mode\n"
             "• /beginner — Toggle Beginner Mode\n"
             "• /language — Switch Hindi/English\n\n"
             "Signals automatically aayenge jab market mein quality setup milega.\n\n"
             "⚠️ <i>AI-generated analysis. Not financial advice.</i>"
         )
+
+    elif cmd == "/capital":
+        from engine import money_management as mm
+        cfg = mm.get_money_config()
+        if args:
+            parts = args.split()
+            try:
+                amt = float(parts[0])
+                curr = parts[1].upper() if len(parts) > 1 else "INR"
+                ok, msg = mm.set_capital(amt, curr)
+                return f"💰 <b>CAPITAL UPDATE</b>\n\n{msg}"
+            except Exception:
+                return "Usage: /capital [amount] [INR|USD]\nExample: /capital 50000 INR or /capital 1000 USD"
+        else:
+            return (
+                f"💰 <b>MONEY MANAGEMENT & CAPITAL</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💵 Capital: {cfg['capital_currency']} {cfg['capital']:,.2f}\n"
+                f"⚙️ Lot Mode: <b>{cfg['lot_mode']}</b>\n"
+                f"🛡 Risk Per Trade: {cfg['risk_pct']}%\n"
+                f"🛑 Daily Loss Cap: {cfg['daily_loss_cap_pct']}%\n\n"
+                f"💡 <i>To update capital: /capital 50000 INR\n"
+                f"To update lot mode: /lotmode exchange (or paper_fractional)</i>"
+            )
+
+    elif cmd == "/lotmode":
+        from engine import money_management as mm
+        if args:
+            ok, msg = mm.set_lot_mode(args)
+            return f"⚙️ <b>LOT MODE UPDATE</b>\n\n{msg}"
+        else:
+            cfg = mm.get_money_config()
+            return f"⚙️ Current Lot Mode: <b>{cfg['lot_mode']}</b>\nUsage: /lotmode [exchange|paper_fractional]"
 
     elif cmd == "/status":
         from engine import paper_trading as pt
@@ -235,6 +307,39 @@ def handle_command(command, args=""):
         else:
             _user_prefs["language"] = "hinglish"
         return f"🌐 <b>Language switched to:</b> {_user_prefs['language'].title()}"
+
+    elif cmd == "/pairs":
+        enabled = [sym for sym, cfg in dl.ASSETS.items() if cfg.get("enabled", True)]
+        disabled = [sym for sym, cfg in dl.ASSETS.items() if not cfg.get("enabled", True)]
+
+        enabled_items = []
+        for sym in enabled:
+            cfg = dl.ASSETS[sym]
+            rating = f"\n  {cfg['beginner_rating']}" if cfg.get('beginner_rating') else ""
+            enabled_items.append(
+                f"🟢 <b>{sym}</b> ({cfg.get('label', sym)})\n"
+                f"  Priority: {cfg.get('priority', 'N/A')} | Level: {cfg.get('level', 'beginner').upper()}\n"
+                f"  Contract: {cfg.get('active_futures_contract', 'N/A')}\n"
+                f"  Exchange: {cfg.get('exchange', 'N/A')}{rating}"
+            )
+        enabled_text = "\n\n".join(enabled_items)
+
+        disabled_items = []
+        for sym in disabled:
+            cfg = dl.ASSETS[sym]
+            disabled_items.append(
+                f"⚪ <b>{sym}</b> ({cfg.get('label', sym)}) — Reserved for {cfg.get('level', 'intermediate').upper()}"
+            )
+        disabled_text = "\n".join(disabled_items)
+
+        return (
+            "📊 <b>TRADING PAIRS CONFIGURATION</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>Active Enabled Pairs:</b>\n{enabled_text}\n\n"
+            f"<b>Disabled Pairs:</b>\n{disabled_text}\n\n"
+            "📌 <i>Levels based on spot; futures may trade at a small premium/discount.\n"
+            "Trade only via SEBI-registered brokers on NSE/BSE.</i>"
+        )
 
     elif cmd == "/ask":
         if args:

@@ -122,16 +122,39 @@ def can_trade(symbol):
         return False, "Daily trade limit reached."
 
     if time.time() < _state["paused_until"]:
-        return False, "Paused after consecutive losses."
+        return False, "Paused after consecutive losses or daily loss cap."
 
     if symbol in _state["active_trades"]:
         return False, f"Active trade already exists for {symbol}."
+
+    # Daily loss cap check
+    try:
+        from engine import money_management as mm
+        cfg = mm.get_money_config()
+        cap = float(cfg.get("capital", 50000.0))
+        cap_curr = cfg.get("capital_currency", "INR")
+        loss_cap_pct = float(cfg.get("daily_loss_cap_pct", 3.0))
+
+        live_usdinr = mm.get_live_usdinr_rate()
+        loss_cap_usd = (cap * (loss_cap_pct / 100.0)) / live_usdinr if cap_curr == "INR" else cap * (loss_cap_pct / 100.0)
+
+        if _state["daily_pnl"] <= -loss_cap_usd:
+            return False, f"Daily loss cap ({loss_cap_pct}%) reached."
+    except Exception as e:
+        pass
 
     return True, ""
 
 
 def check_cooldown(symbol, direction):
     """Check if same-direction cooldown is in effect."""
+    # If no active trade exists, allow new signal after 60s buffer
+    if symbol not in _state["active_trades"]:
+        last_time = _state["last_signal_time"].get(symbol, 0)
+        if (time.time() - last_time) < 60:
+            return False
+        return True
+
     last_dir = _state["last_signal_direction"].get(symbol)
     last_time = _state["last_signal_time"].get(symbol, 0)
 

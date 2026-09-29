@@ -1,0 +1,131 @@
+# ==============================================================================
+# PAIRS CONFIGURATION (Single Source of Truth)
+# ==============================================================================
+
+pairs:
+  USD/INR:
+    priority: 1
+    enabled: true
+    level: "beginner"
+    display_name: "USD/INR (US Dollar / Indian Rupee) 🇺🇸🇮🇳"
+    base: "USD"
+    quote: "INR"
+    exchange: "NSE Currency Derivatives" # VERIFY against current NSE contract specifications
+    instrument_type: "futures"
+    active_futures_contract: "USDINR NEAR-MONTH FUT" # VERIFY against current NSE contract specifications
+    lot_size: 1000 # VERIFY against current NSE contract specifications (1000 USD per contract)
+    tick_size: 0.0025 # VERIFY against current NSE contract specifications (0.25 paise = 0.0025 INR)
+    price_decimals: 4
+    pip_definition: 0.01 # 1 paisa = 0.01 INR
+    trading_hours:
+      start: "09:00" # IST
+      end: "17:00"   # IST
+      timezone: "Asia/Kolkata"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    provider_symbols:
+      twelvedata: "USD/INR"
+      yahoofinance: "USDINR=X"
+      finnhub: "OANDA:USD_INR"
+      alpha_vantage: "USDINR"
+    sl_buffer: 0.05
+    rr_ratio: 2.0
+    beginner_rating: "⭐⭐⭐⭐⭐ Excellent for Beginners (Low Volatility, RBI Range Bound)"
+    disclaimer: "Levels based on spot; futures may trade at a small premium/discount. Trade only via a SEBI-registered broker on NSE/BSE."
+
+  EUR/INR:
+    priority: 2
+    enabled: true
+    level: "beginner"
+    display_name: "EUR/INR (Euro / Indian Rupee) 🇪🇺🇮🇳"
+    base: "EUR"
+    quote: "INR"
+    exchange: "NSE Currency Derivatives" # VERIFY against current NSE contract specifications
+    instrument_type: "futures"
+    active_futures_contract: "EURINR NEAR-MONTH FUT" # VERIFY against current NSE contract specifications
+    lot_size: 1000 # VERIFY against current NSE contract specifications (1000 EUR per contract)
+    tick_size: 0.0025 # VERIFY against current NSE contract specifications (0.25 paise = 0.0025 INR)
+    price_decimals: 4
+    pip_definition: 0.01 # 1 paisa = 0.01 INR
+    trading_hours:
+      start: "09:00" # IST
+      end: "17:00"   # IST
+      timezone: "Asia/Kolkata"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    provider_symbols:
+      twelvedata: "EUR/INR"
+      yahoofinance: "EURINR=X"
+      finnhub: "OANDA:EUR_INR"
+      alpha_vantage: "EURINR"
+    sl_buffer: 0.10 # Slightly wider SL buffer due to lower liquidity
+    rr_ratio: 2.0
+    beginner_rating: "⭐⭐⭐⭐ Good for Beginners (Watch Spread & ECB Decisions)"
+    disclaimer: "Levels based on spot; futures may trade at a small premium/discount. Trade only via a SEBI-registered broker on NSE/BSE. Note: Lower liquidity than USD/INR, watch wider spreads."
+
+  GBP/INR:
+    priority: 3
+    enabled: false # Reserved for intermediate level
+    level: "intermediate"
+    display_name: "GBP/INR (British Pound / Indian Rupee) 🇬🇧🇮🇳"
+    base: "GBP"
+    quote: "INR"
+    exchange: "NSE Currency Derivatives" # VERIFY against current NSE contract specifications
+    instrument_type: "futures"
+    active_futures_contract: "GBPINR NEAR-MONTH FUT" # VERIFY against current NSE contract specifications
+    lot_size: 1000 # VERIFY against current NSE contract specifications
+    tick_size: 0.0025 # VERIFY against current NSE contract specifications
+    price_decimals: 4
+    pip_definition: 0.01
+    trading_hours:
+      start: "09:00"
+      end: "17:00"
+      timezone: "Asia/Kolkata"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    provider_symbols:
+      twelvedata: "GBP/INR"
+      yahoofinance: "GBPINR=X"
+
+  JPY/INR:
+    priority: 4
+    enabled: false # Reserved for intermediate level
+    level: "intermediate"
+    display_name: "JPY/INR (Japanese Yen / Indian Rupee) 🇯🇵🇮🇳"
+    base: "JPY"
+    quote: "INR"
+    exchange: "NSE Currency Derivatives" # VERIFY against current NSE contract specifications
+    instrument_type: "futures"
+    active_futures_contract: "JPYINR NEAR-MONTH FUT" # VERIFY against current NSE contract specifications
+    lot_size: 100000 # VERIFY against current NSE contract specifications (per 100 JPY)
+    tick_size: 0.0025 # VERIFY against current NSE contract specifications
+    price_decimals: 4
+    pip_definition: 0.01
+    trading_hours:
+      start: "09:00"
+      end: "17:00"
+      timezone: "Asia/Kolkata"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    provider_symbols:
+      twelvedata: "JPY/INR"
+      yahoofinance: "JPYINR=X"
+
+  XAU/USD:
+    priority: 5
+    enabled: true
+    level: "advanced"
+    display_name: "Gold 🥇 (XAU/USD)"
+    base: "XAU"
+    quote: "USD"
+    exchange: "COMEX"
+    instrument_type: "spot"
+    active_futures_contract: "XAU/USD SPOT"
+    lot_size: 100
+    tick_size: 0.01
+    price_decimals: 2
+    pip_definition: 1.0
+    trading_hours:
+      start: "00:00"
+      end: "23:59"
+      timezone: "Asia/Kolkata"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    provider_symbols:
+      twelvedata: "XAU/USD"
+      yahoofinance: "GC=F"

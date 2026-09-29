@@ -1,0 +1,9 @@
+{
+  "lot_mode": "paper_fractional",
+  "capital": 50000.0,
+  "capital_currency": "INR",
+  "risk_pct": 1.0,
+  "daily_loss_cap_pct": 3.0,
+  "max_lots_exchange": 10,
+  "max_lots_paper": 5.0
+}

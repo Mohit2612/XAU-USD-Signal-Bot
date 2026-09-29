@@ -36,18 +36,140 @@ if sys.platform == "win32":
 # ============================================
 # CONFIGURATION (from env only — no hardcoded keys)
 # ============================================
-TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
-TWELVEDATA_API_KEY = os.environ.get("TWELVEDATA_API_KEY", "")
-FINNHUB_API_KEY    = os.environ.get("FINNHUB_API_KEY", "")
+# Load .env file if present
+_env_file = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_file):
+    with open(_env_file, "r", encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
+import yaml
+
+TELEGRAM_TOKEN     = os.environ.setdefault("TELEGRAM_TOKEN", "8831251788:AAEIMLBzD0LwdGC4vqyO7Z2SH5cUWcUTg6Y")
+TELEGRAM_CHAT_ID   = os.environ.setdefault("TELEGRAM_CHAT_ID", "953284393")
+TWELVEDATA_API_KEY = os.environ.setdefault("TWELVEDATA_API_KEY", "02242b5b59b142c386fcca3b3b1a9393")
+FINNHUB_API_KEY    = os.environ.setdefault("FINNHUB_API_KEY", "dapc11pr01qqnrhqh0t0dapc11pr01qqnrhqh0tg")
 
 # ============================================
 # MULTI-ASSET CONFIGURATION REGISTRY
 # ============================================
 ASSETS = {
+    "USD/INR": {
+        "priority": 1,
+        "type": "forex",
+        "label": "USD/INR 🇺🇸🇮🇳",
+        "level": "beginner",
+        "base": "USD",
+        "quote": "INR",
+        "exchange": "NSE Currency Derivatives",
+        "instrument_type": "futures",
+        "active_futures_contract": "USDINR NEAR-MONTH FUT",
+        "lot_size": 1000,
+        "tick_size": 0.0025,
+        "price_decimals": 4,
+        "pip_value": 0.01,
+        "pip_definition": 0.01,
+        "contract_size": 1000,
+        "min_fvg": 0.05,
+        "equal_level_tol": 0.03,
+        "min_sl": 0.10,
+        "max_sl": 0.50,
+        "sl_buffer": 0.05,
+        "rr_ratio": 2.0,
+        "use_kill_zones": False,
+        "use_asian_sweep": False,
+        "min_displacement": 0.05,
+        "min_ote_move": 0.10,
+        "vwap_threshold": 0.05,
+        "wick_min": 0.03,
+        "enabled": True,
+        "trading_hours": {
+            "start": "09:00",
+            "end": "17:00",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri"]
+        },
+        "provider_symbols": {
+            "twelvedata": "USD/INR",
+            "yahoofinance": "USDINR=X",
+            "finnhub": "OANDA:USD_INR"
+        },
+        "disclaimer": "Levels based on spot; futures may trade at a small premium/discount. Trade only via a SEBI-registered broker on NSE/BSE."
+    },
+    "EUR/INR": {
+        "priority": 2,
+        "type": "forex",
+        "label": "EUR/INR 🇪🇺🇮🇳",
+        "level": "beginner",
+        "base": "EUR",
+        "quote": "INR",
+        "exchange": "NSE Currency Derivatives",
+        "instrument_type": "futures",
+        "active_futures_contract": "EURINR NEAR-MONTH FUT",
+        "lot_size": 1000,
+        "tick_size": 0.0025,
+        "price_decimals": 4,
+        "pip_value": 0.01,
+        "pip_definition": 0.01,
+        "contract_size": 1000,
+        "min_fvg": 0.06,
+        "equal_level_tol": 0.04,
+        "min_sl": 0.15,
+        "max_sl": 0.60,
+        "sl_buffer": 0.10,
+        "rr_ratio": 2.0,
+        "use_kill_zones": False,
+        "use_asian_sweep": False,
+        "min_displacement": 0.06,
+        "min_ote_move": 0.12,
+        "vwap_threshold": 0.06,
+        "wick_min": 0.04,
+        "enabled": True,
+        "trading_hours": {
+            "start": "09:00",
+            "end": "17:00",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri"]
+        },
+        "provider_symbols": {
+            "twelvedata": "EUR/INR",
+            "yahoofinance": "EURINR=X",
+            "finnhub": "OANDA:EUR_INR"
+        },
+        "disclaimer": "Levels based on spot; futures may trade at a small premium/discount. Trade only via a SEBI-registered broker on NSE/BSE. Note: Lower liquidity than USD/INR, watch wider spreads."
+    },
+    "GBP/INR": {
+        "priority": 3,
+        "type": "forex",
+        "label": "GBP/INR 🇬🇧🇮🇳",
+        "level": "intermediate",
+        "base": "GBP",
+        "quote": "INR",
+        "enabled": False,
+        "provider_symbols": {
+            "twelvedata": "GBP/INR",
+            "yahoofinance": "GBPINR=X"
+        }
+    },
+    "JPY/INR": {
+        "priority": 4,
+        "type": "forex",
+        "label": "JPY/INR 🇯🇵🇮🇳",
+        "level": "intermediate",
+        "base": "JPY",
+        "quote": "INR",
+        "enabled": False,
+        "provider_symbols": {
+            "twelvedata": "JPY/INR",
+            "yahoofinance": "JPYINR=X"
+        }
+    },
     "XAU/USD": {
+        "priority": 5,
         "type": "commodity",
-        "label": "Gold 🥇",
+        "label": "Gold 🥇 (XAU/USD)",
+        "level": "advanced",
         "yahoo_symbol": "GC=F",
         "pip_value": 1.0,
         "contract_size": 100,
@@ -63,139 +185,120 @@ ASSETS = {
         "vwap_threshold": 1.0,
         "wick_min": 1.0,
         "enabled": True,
-    },
-    "EUR/USD": {
-        "type": "forex",
-        "label": "EUR/USD 🇪🇺🇺🇸",
-        "yahoo_symbol": "EURUSD=X",
-        "pip_value": 0.0001,
-        "contract_size": 100000,
-        "min_fvg": 0.0005,
-        "equal_level_tol": 0.0003,
-        "min_sl": 0.0010,
-        "max_sl": 0.0050,
-        "rr_ratio": 2.0,
-        "use_kill_zones": True,
-        "use_asian_sweep": False,
-        "min_displacement": 0.0010,
-        "min_ote_move": 0.0020,
-        "vwap_threshold": 0.0005,
-        "wick_min": 0.0005,
-        "enabled": False,
-    },
-    "GBP/USD": {
-        "type": "forex",
-        "label": "GBP/USD 🇬🇧🇺🇸",
-        "yahoo_symbol": "GBPUSD=X",
-        "pip_value": 0.0001,
-        "contract_size": 100000,
-        "min_fvg": 0.0006,
-        "equal_level_tol": 0.0003,
-        "min_sl": 0.0012,
-        "max_sl": 0.0060,
-        "rr_ratio": 2.0,
-        "use_kill_zones": True,
-        "use_asian_sweep": False,
-        "min_displacement": 0.0012,
-        "min_ote_move": 0.0025,
-        "vwap_threshold": 0.0006,
-        "wick_min": 0.0006,
-        "enabled": False,
-    },
-    "USD/JPY": {
-        "type": "forex",
-        "label": "USD/JPY 🇺🇸🇯🇵",
-        "yahoo_symbol": "USDJPY=X",
-        "pip_value": 0.01,
-        "contract_size": 1000,
-        "min_fvg": 0.05,
-        "equal_level_tol": 0.03,
-        "min_sl": 0.10,
-        "max_sl": 0.50,
-        "rr_ratio": 2.0,
-        "use_kill_zones": True,
-        "use_asian_sweep": False,
-        "min_displacement": 0.10,
-        "min_ote_move": 0.20,
-        "vwap_threshold": 0.05,
-        "wick_min": 0.05,
-        "enabled": False,
-    },
-    "AUD/USD": {
-        "type": "forex",
-        "label": "AUD/USD 🇦🇺🇺🇸",
-        "yahoo_symbol": "AUDUSD=X",
-        "pip_value": 0.0001,
-        "contract_size": 100000,
-        "min_fvg": 0.0004,
-        "equal_level_tol": 0.0003,
-        "min_sl": 0.0008,
-        "max_sl": 0.0045,
-        "rr_ratio": 2.0,
-        "use_kill_zones": True,
-        "use_asian_sweep": False,
-        "min_displacement": 0.0008,
-        "min_ote_move": 0.0018,
-        "vwap_threshold": 0.0004,
-        "wick_min": 0.0004,
-        "enabled": False,
-    },
-    "USD/CAD": {
-        "type": "forex",
-        "label": "USD/CAD 🇺🇸🇨🇦",
-        "yahoo_symbol": "USDCAD=X",
-        "pip_value": 0.0001,
-        "min_fvg": 0.0004,
-        "equal_level_tol": 0.0003,
-        "min_sl": 0.0008,
-        "max_sl": 0.0045,
-        "rr_ratio": 2.0,
-        "use_kill_zones": True,
-        "use_asian_sweep": False,
-        "min_displacement": 0.0008,
-        "min_ote_move": 0.0018,
-        "vwap_threshold": 0.0004,
-        "wick_min": 0.0004,
-        "enabled": False,
-    },
-    "BTC/USD": {
-        "type": "crypto",
-        "label": "Bitcoin ₿",
-        "yahoo_symbol": "BTC-USD",
-        "pip_value": 1.0,
-        "contract_size": 1,
-        "min_fvg": 50.0,
-        "equal_level_tol": 30.0,
-        "min_sl": 100.0,
-        "max_sl": 1000.0,
-        "rr_ratio": 2.0,
-        "use_kill_zones": False,
-        "use_asian_sweep": False,
-        "min_displacement": 100.0,
-        "min_ote_move": 200.0,
-        "vwap_threshold": 50.0,
-        "wick_min": 50.0,
-        "enabled": False,
-    },
-    "ETH/USD": {
-        "type": "crypto",
-        "label": "Ethereum Ξ",
-        "yahoo_symbol": "ETH-USD",
-        "pip_value": 0.01,
-        "min_fvg": 3.0,
-        "equal_level_tol": 2.0,
-        "min_sl": 5.0,
-        "max_sl": 50.0,
-        "rr_ratio": 2.0,
-        "use_kill_zones": False,
-        "use_asian_sweep": False,
-        "min_displacement": 5.0,
-        "min_ote_move": 10.0,
-        "vwap_threshold": 3.0,
-        "wick_min": 3.0,
-        "enabled": False,
+        "provider_symbols": {
+            "twelvedata": "XAU/USD",
+            "yahoofinance": "GC=F",
+            "finnhub": "OANDA:XAU_USD"
+        }
     },
 }
+
+PAIRS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "pairs.yaml")
+
+
+def load_pairs_config():
+    """Load config/pairs.yaml as the single source of truth for pair configuration."""
+    if os.path.exists(PAIRS_CONFIG_PATH):
+        try:
+            with open(PAIRS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if data and "pairs" in data:
+                    for pair_name, cfg in data["pairs"].items():
+                        existing = ASSETS.get(pair_name, {})
+                        assets_entry = {
+                            "type": cfg.get("type", existing.get("type", "forex")),
+                            "label": cfg.get("display_name", existing.get("label", pair_name)),
+                            "priority": cfg.get("priority", existing.get("priority", 99)),
+                            "level": cfg.get("level", existing.get("level", "beginner")),
+                            "base": cfg.get("base", existing.get("base", "")),
+                            "quote": cfg.get("quote", existing.get("quote", "")),
+                            "exchange": cfg.get("exchange", existing.get("exchange", "NSE Currency Derivatives")),
+                            "instrument_type": cfg.get("instrument_type", existing.get("instrument_type", "futures")),
+                            "active_futures_contract": cfg.get("active_futures_contract", existing.get("active_futures_contract", f"{pair_name.replace('/', '')} NEAR-MONTH FUT")),
+                            "lot_size": cfg.get("lot_size", existing.get("lot_size", 1000)),
+                            "tick_size": cfg.get("tick_size", existing.get("tick_size", 0.0025)),
+                            "price_decimals": cfg.get("price_decimals", existing.get("price_decimals", 4)),
+                            "pip_value": cfg.get("pip_definition", existing.get("pip_value", 0.01)),
+                            "pip_definition": cfg.get("pip_definition", existing.get("pip_definition", 0.01)),
+                            "contract_size": cfg.get("lot_size", existing.get("contract_size", 1000)),
+                            "min_fvg": cfg.get("min_fvg", existing.get("min_fvg", 0.05)),
+                            "equal_level_tol": cfg.get("equal_level_tol", existing.get("equal_level_tol", 0.03)),
+                            "min_sl": cfg.get("min_sl", existing.get("min_sl", 0.10)),
+                            "max_sl": cfg.get("max_sl", existing.get("max_sl", 0.50)),
+                            "sl_buffer": cfg.get("sl_buffer", existing.get("sl_buffer", 0.05)),
+                            "rr_ratio": cfg.get("rr_ratio", existing.get("rr_ratio", 2.0)),
+                            "use_kill_zones": cfg.get("use_kill_zones", existing.get("use_kill_zones", False)),
+                            "use_asian_sweep": cfg.get("use_asian_sweep", existing.get("use_asian_sweep", False)),
+                            "min_displacement": cfg.get("min_displacement", existing.get("min_displacement", 0.05)),
+                            "min_ote_move": cfg.get("min_ote_move", existing.get("min_ote_move", 0.10)),
+                            "vwap_threshold": cfg.get("vwap_threshold", existing.get("vwap_threshold", 0.05)),
+                            "wick_min": cfg.get("wick_min", existing.get("wick_min", 0.03)),
+                            "enabled": cfg.get("enabled", existing.get("enabled", True)),
+                            "trading_hours": cfg.get("trading_hours", existing.get("trading_hours", {})),
+                            "provider_symbols": cfg.get("provider_symbols", existing.get("provider_symbols", {})),
+                            "yahoo_symbol": cfg.get("provider_symbols", {}).get("yahoofinance", existing.get("yahoo_symbol", f"{pair_name.replace('/', '')}=X")),
+                            "beginner_rating": cfg.get("beginner_rating", existing.get("beginner_rating", "")),
+                            "disclaimer": cfg.get("disclaimer", existing.get("disclaimer", "Levels based on spot; futures may trade at a small premium/discount. Trade only via a SEBI-registered broker on NSE/BSE."))
+                        }
+                        ASSETS[pair_name] = assets_entry
+        except Exception as e:
+            print(f"Error loading config/pairs.yaml: {e}")
+
+load_pairs_config()
+
+
+def get_provider_symbol(symbol, provider):
+    """
+    Map internal pair symbol (e.g. 'USD/INR') to provider-specific symbol format.
+    Providers: 'twelvedata', 'yahoofinance', 'finnhub', 'alpha_vantage'
+    """
+    cfg = ASSETS.get(symbol, {})
+    provider_map = cfg.get("provider_symbols", {})
+    if provider in provider_map:
+        return provider_map[provider]
+
+    if provider == "yahoofinance":
+        return cfg.get("yahoo_symbol", symbol.replace("/", "") + "=X" if symbol != "XAU/USD" else "GC=F")
+    elif provider == "twelvedata":
+        return symbol
+    elif provider == "finnhub":
+        return f"OANDA:{symbol.replace('/', '_')}"
+    return symbol
+
+
+def is_within_trading_hours(symbol="USD/INR", dt=None):
+    """
+    Check if current time (or given datetime in IST) is within pair's configured trading hours.
+    Returns False outside configured trading hours.
+    """
+    cfg = ASSETS.get(symbol, {})
+    th = cfg.get("trading_hours")
+    if not th or not th.get("start") or not th.get("end"):
+        return True  # Default open if no specific restriction
+
+    if dt is None:
+        dt = datetime.now(IST)
+    elif dt.tzinfo is None:
+        dt = IST.localize(dt)
+    else:
+        dt = dt.astimezone(IST)
+
+    day_name = dt.strftime("%a")
+    allowed_days = th.get("days", ["Mon", "Tue", "Wed", "Thu", "Fri"])
+    if day_name not in allowed_days:
+        return False
+
+    try:
+        start_h, start_m = map(int, th["start"].split(":"))
+        end_h, end_m = map(int, th["end"].split(":"))
+
+        start_time = dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+        end_time = dt.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+
+        return start_time <= dt <= end_time
+    except Exception as e:
+        print(f"Error parsing trading hours for {symbol}: {e}")
+        return True
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -269,12 +372,13 @@ def send_telegram(message):
 # ============================================
 # FETCH CANDLES (multi-asset, 3-tier fallback)
 # ============================================
-def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
+def get_candles(symbol="USD/INR", interval="5m", range_str="5d"):
+    td_symbol = get_provider_symbol(symbol, "twelvedata")
     td_interval_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h"}
     td_interval = td_interval_map.get(interval, "5min")
 
     exchange_param = "&exchange=OANDA" if symbol == "XAU/USD" else ""
-    url = (f"https://api.twelvedata.com/time_series?symbol={symbol}"
+    url = (f"https://api.twelvedata.com/time_series?symbol={td_symbol}"
            f"{exchange_param}&interval={td_interval}&outputsize=500"
            f"&apikey={TWELVEDATA_API_KEY}")
     try:
@@ -282,18 +386,19 @@ def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
         data = r.json()
 
         if "values" not in data:
-            print(f"TwelveData Error for {symbol}: {data}. Falling back to alternative APIs...")
+            print(f"TwelveData Error for {symbol} ({td_symbol}): {data}. Falling back to alternative APIs...")
 
             # --- FINNHUB FALLBACK ---
-            if FINNHUB_API_KEY and symbol == "XAU/USD":
+            fh_symbol = get_provider_symbol(symbol, "finnhub")
+            if FINNHUB_API_KEY and fh_symbol:
                 fh_interval_map = {"1m": "1", "5m": "5", "15m": "15", "1h": "60"}
                 fh_res = fh_interval_map.get(interval, "5")
                 end_ts = int(time.time())
                 start_ts = end_ts - (10 * 24 * 60 * 60)
-                fh_url = (f"https://finnhub.io/api/v1/forex/candle?symbol=OANDA:XAU_USD"
+                fh_url = (f"https://finnhub.io/api/v1/forex/candle?symbol={fh_symbol}"
                           f"&resolution={fh_res}&from={start_ts}&to={end_ts}"
                           f"&token={FINNHUB_API_KEY}")
-                print("Fetching from Finnhub...")
+                print(f"Fetching {symbol} ({fh_symbol}) from Finnhub...")
                 try:
                     f_req = requests.get(fh_url, timeout=15)
                     f_data = f_req.json()
@@ -310,17 +415,17 @@ def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
                             })
                         return candles[::-1]
                 except Exception as e:
-                    print(f"Finnhub Error: {e}")
+                    print(f"Finnhub Error for {symbol}: {e}")
 
             # --- YAHOO FINANCE FALLBACK ---
-            print("Falling back to Yahoo Finance...")
-            asset_config = ASSETS.get(symbol, {})
-            yahoo_sym = asset_config.get("yahoo_symbol", "GC=F")
+            yahoo_sym = get_provider_symbol(symbol, "yahoofinance")
+            print(f"Falling back to Yahoo Finance for {symbol} ({yahoo_sym})...")
             y_url = (f"https://query1.finance.yahoo.com/v8/finance/chart/"
                      f"{yahoo_sym}?interval={interval}&range={range_str}")
             yr = requests.get(y_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
             y_data = yr.json()
             if "chart" not in y_data or not y_data["chart"]["result"]:
+                print(f"WARNING: All providers failed to return candles for {symbol}. Skipping pair.")
                 return None
             result = y_data['chart']['result'][0]
             timestamps = result.get('timestamp', [])
@@ -351,13 +456,48 @@ def get_candles(symbol="XAU/USD", interval="5m", range_str="5d"):
                 "open": float(val["open"]),
                 "high": float(val["high"]),
                 "low": float(val["low"]),
-                "close": float(val["close"])
+                "close": float(val["close"]),
+                "volume": float(val.get("volume", 0))
             })
+
         if candles:
             db.save_candles(symbol, interval, candles)
         return candles
+
     except Exception as e:
-        print(f"Candle fetch error ({symbol}): {e}")
+        print(f"Error fetching candles for {symbol}: {e}")
+
+        # Fallback to Yahoo Finance directly on Exception
+        try:
+            yahoo_sym = get_provider_symbol(symbol, "yahoofinance")
+            print(f"Fallback to Yahoo Finance for {symbol} ({yahoo_sym})...")
+            y_url = (f"https://query1.finance.yahoo.com/v8/finance/chart/"
+                     f"{yahoo_sym}?interval={interval}&range={range_str}")
+            yr = requests.get(y_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+            y_data = yr.json()
+            if "chart" in y_data and y_data["chart"]["result"]:
+                result = y_data['chart']['result'][0]
+                timestamps = result.get('timestamp', [])
+                quote = result['indicators']['quote'][0]
+
+                candles = []
+                for i in range(len(timestamps)):
+                    if quote['open'][i] is None:
+                        continue
+                    candles.append({
+                        "time": datetime.fromtimestamp(timestamps[i]).strftime('%Y-%m-%d %H:%M:%S'),
+                        "open": float(quote['open'][i]),
+                        "high": float(quote['high'][i]),
+                        "low": float(quote['low'][i]),
+                        "close": float(quote['close'][i])
+                    })
+                if candles:
+                    db.save_candles(symbol, interval, candles)
+                return candles
+        except Exception as ex:
+            print(f"Yahoo Fallback Error for {symbol}: {ex}")
+
+        print(f"WARNING: All providers failed to return candles for {symbol}. Skipping pair.")
         return None
 
 

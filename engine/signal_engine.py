@@ -225,18 +225,6 @@ def _calculate_risk_reward(candles_5m, signal_dir, ict, indicators, asset_cfg):
     if sl_distance <= 0:
         return None
 
-    # Calculate lots (paper trading — $500 capital, 5% risk)
-    capital = 500
-    risk_pct = 0.05
-    risk_amount = capital * risk_pct
-    contract_size = (asset_cfg or {}).get("contract_size", 100)
-
-    raw_lots = risk_amount / (sl_distance * contract_size) if (sl_distance * contract_size) > 0 else 0.01
-    lots = round(raw_lots, 2)
-    lots = max(0.01, min(lots, 0.50))
-
-    actual_risk = sl_distance * lots * contract_size
-
     if signal_dir == "LONG":
         sl_price = curr_price - sl_distance
         tp_price = curr_price + tp_distance
@@ -244,14 +232,29 @@ def _calculate_risk_reward(candles_5m, signal_dir, ict, indicators, asset_cfg):
         sl_price = curr_price + sl_distance
         tp_price = curr_price - tp_distance
 
+    from engine import money_management as mm
+    mm_res = mm.calculate_lot_size(asset_cfg.get("label", "Pair"), curr_price, sl_price, asset_cfg)
+    if not mm_res:
+        return None
+
+    prec = (asset_cfg or {}).get("price_decimals", 2)
     return {
         "entry_price": curr_price,
-        "sl_price": round(sl_price, 2),
-        "tp_price": round(tp_price, 2),
-        "sl_distance": round(sl_distance, 2),
-        "tp_distance": round(tp_distance, 2),
-        "lots": lots,
-        "actual_risk": round(actual_risk, 2),
+        "sl_price": round(sl_price, prec),
+        "tp_price": round(tp_price, prec),
+        "sl_distance": round(sl_distance, prec),
+        "tp_distance": round(tp_distance, prec),
+        "lots": mm_res["lots"],
+        "is_zero_lots": mm_res["is_zero_lots"],
+        "actual_risk": mm_res["risk_amount_usd"],
+        "actual_risk_inr": mm_res["risk_amount_inr"],
+        "actual_risk_usd": mm_res["risk_amount_usd"],
+        "loss_per_lot_inr": mm_res["loss_per_lot_inr"],
+        "min_capital_needed_user": mm_res["min_capital_needed_user"],
+        "user_currency": mm_res["user_currency"],
+        "lot_mode": mm_res["lot_mode"],
+        "risk_pct": mm_res["risk_pct"],
+        "margin_note": mm_res["margin_note"],
         "rr_ratio": rr_ratio,
     }
 
@@ -384,7 +387,7 @@ def _score_signal(bias, trend_info, ict, indicators, patterns, session, asset_cf
 # ============================================
 # MAIN SIGNAL GENERATION
 # ============================================
-MIN_CONFIDENCE = 50  # Minimum score to trigger a signal
+MIN_CONFIDENCE = 45  # Optimized score threshold for active signal generation
 
 def generate_mentor_signal(snapshot):
     """
@@ -401,6 +404,16 @@ def generate_mentor_signal(snapshot):
     asset_cfg = snapshot.get("asset_config", {})
     session = snapshot.get("session")
     pair = snapshot.get("pair", "XAU/USD")
+
+    # --- ENABLED CHECK ---
+    if not asset_cfg.get("enabled", True):
+        print(f"  ❌ Pair {pair} is disabled in config. No trade.")
+        return None
+
+    # --- TRADING HOURS GATE ---
+    if not dl.is_within_trading_hours(pair):
+        print(f"  ⏰ Outside trading hours for {pair}. Market closed / No trade.")
+        return None
 
     if not candles_5m or not candles_15m or not candles_1h:
         return None
@@ -477,6 +490,19 @@ def generate_mentor_signal(snapshot):
         print("  ❌ Cannot compute valid stop-loss. No trade.")
         return None
 
+    if risk.get("is_zero_lots", False):
+        curr_sym = "₹" if risk.get("user_currency") == "INR" else "$"
+        print(f"  ❌ Capital too low for 1 lot setup. Minimum required: {curr_sym}{risk['min_capital_needed_user']:,.2f}")
+        return {
+            "pair": pair,
+            "signal": "NO_TRADE",
+            "reason_code": "ZERO_LOTS",
+            "min_capital_needed": risk["min_capital_needed_user"],
+            "currency_symbol": curr_sym,
+            "margin_note": risk.get("margin_note", "Broker se margin requirement confirm karein"),
+            "risk_pct": risk.get("risk_pct", 1.0),
+        }
+
     # --- SUPPORT / RESISTANCE CONTEXT ---
     supports, resistances = _find_sr_levels(candles_1h)
 
@@ -493,6 +519,11 @@ def generate_mentor_signal(snapshot):
         "tp_distance": risk["tp_distance"],
         "lots": risk["lots"],
         "actual_risk": risk["actual_risk"],
+        "actual_risk_inr": risk.get("actual_risk_inr", 0.0),
+        "actual_risk_usd": risk.get("actual_risk_usd", 0.0),
+        "lot_mode": risk.get("lot_mode", "paper_fractional"),
+        "risk_pct": risk.get("risk_pct", 1.0),
+        "margin_note": risk.get("margin_note", "Broker se margin requirement confirm karein"),
         "rr_ratio": risk["rr_ratio"],
         # Context for mentor explanation
         "trend_1h": trend_info.get("trend_1h", "N/A"),
